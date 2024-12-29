@@ -1,4 +1,3 @@
-use core::panic;
 use std::{
     collections::HashMap,
     sync::{
@@ -134,8 +133,8 @@ impl LeaderTrackerImpl {
         let cur_slot = self.cur_slot.load(Ordering::Relaxed);
         let mut slots_to_remove = vec![];
         for leaders in self.cur_leaders.iter() {
-            if leaders.key().clone() < cur_slot {
-                slots_to_remove.push(leaders.key().clone());
+            if *leaders.key() < cur_slot {
+                slots_to_remove.push(*leaders.key());
             }
         }
         for slot in slots_to_remove {
@@ -146,12 +145,12 @@ impl LeaderTrackerImpl {
 
 fn _get_start_slot(next_slot: u64, leader_offset: i64) -> u64 {
     let slot_buffer = leader_offset * (NUM_LEADERS_PER_SLOT as i64);
-    let start_slot = if slot_buffer > 0 {
+    
+    if slot_buffer > 0 {
         next_slot + slot_buffer as u64
     } else {
-        next_slot - slot_buffer.abs() as u64
-    };
-    start_slot
+        next_slot - slot_buffer.unsigned_abs()
+    }
 }
 
 impl LeaderTrackerTrait for LeaderTrackerImpl {
@@ -176,7 +175,6 @@ impl LeaderTrackerTrait for LeaderTrackerImpl {
         leaders
             .values()
             .clone()
-            .into_iter()
             .map(|v| v.to_owned())
             .collect()
     }

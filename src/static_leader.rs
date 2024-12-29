@@ -1,25 +1,11 @@
-use core::panic;
 use std::{
-    collections::HashMap,
-    net::{IpAddr, SocketAddr},
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
-    time::{Duration, Instant},
+    net::{SocketAddr},
 };
 
-use cadence_macros::statsd_time;
-use dashmap::DashMap;
-use indexmap::IndexMap;
-use solana_client::rpc_client::RpcClient;
 use solana_rpc_client_api::response::RpcContactInfo;
-use solana_sdk::slot_history::Slot;
-use tokio::time::sleep;
-use tracing::{debug, error, info};
 
 use crate::{
-    errors::AtlasTxnSenderError, leader_tracker::LeaderTrackerTrait, solana_rpc::SolanaRpc,
+    leader_tracker::LeaderTrackerTrait,
     DEFAULT_P3_QUIC_PORT,
 };
 

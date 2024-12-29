@@ -3,17 +3,17 @@ use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_program_runtime::compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT};
-use solana_sdk::transaction::{self, VersionedTransaction};
+use solana_sdk::transaction::{VersionedTransaction};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::{
     runtime::{Builder, Runtime},
-    time::{error::Elapsed, sleep, timeout},
+    time::{sleep, timeout},
 };
 use tonic::async_trait;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 use crate::{
     leader_tracker::{LeaderTracker, LeaderTrackerTrait},
@@ -79,8 +79,8 @@ impl TxnSenderImpl {
         let transaction_store = self.transaction_store.clone();
         let connection_cache = self.connection_cache.clone();
         let txn_sender_runtime = self.txn_sender_runtime.clone();
-        let txn_send_retry_interval_seconds = self.txn_send_retry_interval_seconds.clone();
-        let max_retry_queue_size = self.max_retry_queue_size.clone();
+        let txn_send_retry_interval_seconds = self.txn_send_retry_interval_seconds;
+        let max_retry_queue_size = self.max_retry_queue_size;
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
@@ -176,7 +176,7 @@ impl TxnSenderImpl {
     }
 
     fn track_transaction(&self, transaction_data: &TransactionData) {
-        let sent_at = transaction_data.sent_at.clone();
+        let sent_at = transaction_data.sent_at;
         let signature = get_signature(transaction_data);
         if signature.is_none() {
             return;

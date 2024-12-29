@@ -20,17 +20,15 @@ use cadence_macros::set_global_default;
 use figment::{providers::Env, Figment};
 use grpc_geyser::GrpcGeyserImpl;
 use jsonrpsee::server::{middleware::ProxyGetRequestLayer, ServerBuilder};
-use leader_tracker::{LeaderTracker, LeaderTrackerImpl};
+use leader_tracker::{LeaderTrackerImpl};
 use rpc_server::{AtlasTxnSenderImpl, AtlasTxnSenderServer};
 use serde::Deserialize;
 use solana_client::{connection_cache::ConnectionCache, rpc_client::RpcClient};
 use solana_sdk::signature::{read_keypair_file, Keypair};
 use static_leader::StaticLeaderImpl;
-use tokio::sync::RwLock;
 use tracing::{error, info};
 use transaction_store::TransactionStoreImpl;
 use txn_sender::TxnSenderImpl;
-use yellowstone_grpc_client::GeyserGrpcClient;
 
 #[derive(Debug, Deserialize)]
 struct AtlasTxnSenderEnv {
@@ -65,8 +63,7 @@ async fn main() -> anyhow::Result<()> {
     // Init metrics/logging
     let env: AtlasTxnSenderEnv = Figment::from(Env::raw()).extract().unwrap();
     let env_filter = env::var("RUST_LOG")
-        .or::<Result<String, ()>>(Ok("info".to_string()))
-        .unwrap();
+        .unwrap_or("info".to_string());
     tracing_subscriber::fmt()
         .with_env_filter(env_filter)
         .json()
@@ -146,11 +143,9 @@ async fn main() -> anyhow::Result<()> {
 
 fn new_metrics_client() {
     let uri = env::var("METRICS_URI")
-        .or::<String>(Ok("127.0.0.1".to_string()))
-        .unwrap();
+        .unwrap_or("127.0.0.1".to_string());
     let port = env::var("METRICS_PORT")
-        .or::<String>(Ok("7998".to_string()))
-        .unwrap()
+        .unwrap_or("7998".to_string())
         .parse::<u16>()
         .unwrap();
     info!("collecting metrics on: {}:{}", uri, port);
