@@ -1,3 +1,12 @@
+## P3 Txn Sender
+
+This package is a fork of Helius's `atlas-txn-sender` to send transactions to Paladin leaders via their P3 port. 
+
+The `IDENTITY_KEYPAIR_FILE` env variable should be the filepath to the keypair which stakes `$PAL`. 
+
+The original README is below.
+
+----
 ## Atlas Txn Sender
 
 This package uses the min required dependencies to send transactions to Solana leaders.

@@ -46,6 +46,9 @@ struct AtlasTxnSenderEnv {
     max_retry_queue_size: Option<usize>,
 }
 
+// This should match the default P3 QUIC port in the Paladin config
+pub const DEFAULT_P3_QUIC_PORT: u16 = 4819;
+
 // Defualt on RPC is 4
 pub const DEFAULT_TPU_CONNECTION_POOL_SIZE: usize = 4;
 
@@ -88,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
         let identity_keypair =
             read_keypair_file(identity_keypair_file).expect("keypair file must exist");
         connection_cache = Arc::new(ConnectionCache::new_with_client_options(
-            "atlas-txn-sender",
+            "p3-txn-sender",
             tpu_connection_pool_size,
             None, // created if none specified
             Some((&identity_keypair, IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))),
@@ -97,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         let identity_keypair = Keypair::new();
         connection_cache = Arc::new(ConnectionCache::new_with_client_options(
-            "atlas-txn-sender",
+            "p3-txn-sender",
             tpu_connection_pool_size,
             None, // created if none specified
             Some((&identity_keypair, IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))),
@@ -153,7 +156,7 @@ fn new_metrics_client() {
     let host = (uri, port);
     let udp_sink = BufferedUdpMetricSink::from(host, socket).unwrap();
     let queuing_sink = QueuingMetricSink::from(udp_sink);
-    let builder = StatsdClient::builder("atlas_txn_sender", queuing_sink);
+    let builder = StatsdClient::builder("p3_txn_sender", queuing_sink);
     let client = builder
         .with_error_handler(|e| error!("statsd metrics error: {}", e))
         .build();

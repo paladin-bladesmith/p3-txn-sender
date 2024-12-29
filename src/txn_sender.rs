@@ -19,6 +19,7 @@ use crate::{
     leader_tracker::LeaderTracker,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
+    DEFAULT_P3_QUIC_PORT,
 };
 use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
 use solana_sdk::borsh0_10::try_from_slice_unchecked;
@@ -286,17 +287,20 @@ impl TxnSender for TxnSenderImpl {
             .unwrap_or("none".to_string());
         let mut leader_num = 0;
         for leader in self.leader_tracker.get_leaders() {
-            if leader.tpu_quic.is_none() {
-                error!("leader {:?} has no tpu_quic", leader);
+            if leader.gossip.is_none() {
+                error!("leader {:?} has no gossip", leader);
                 continue;
             }
             let connection_cache = self.connection_cache.clone();
             let wire_transaction = transaction_data.wire_transaction.clone();
             let api_key = api_key.clone();
             self.txn_sender_runtime.spawn(async move {
+                let mut p3_addr = leader.gossip.unwrap();
+                p3_addr.set_port(DEFAULT_P3_QUIC_PORT);
+                
                 for i in 0..SEND_TXN_RETRIES {
                     let conn =
-                        connection_cache.get_nonblocking_connection(&leader.tpu_quic.unwrap());
+                        connection_cache.get_nonblocking_connection(&p3_addr);
                     if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data(&wire_transaction)).await {
                             if let Err(e) = result {
                                 if i == SEND_TXN_RETRIES-1 {
