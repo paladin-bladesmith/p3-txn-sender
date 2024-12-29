@@ -3,6 +3,7 @@ mod grpc_geyser;
 mod leader_tracker;
 mod rpc_server;
 mod solana_rpc;
+mod static_leader;
 mod transaction_store;
 mod txn_sender;
 mod utils;
@@ -19,11 +20,12 @@ use cadence_macros::set_global_default;
 use figment::{providers::Env, Figment};
 use grpc_geyser::GrpcGeyserImpl;
 use jsonrpsee::server::{middleware::ProxyGetRequestLayer, ServerBuilder};
-use leader_tracker::LeaderTrackerImpl;
+use leader_tracker::{LeaderTracker, LeaderTrackerImpl};
 use rpc_server::{AtlasTxnSenderImpl, AtlasTxnSenderServer};
 use serde::Deserialize;
 use solana_client::{connection_cache::ConnectionCache, rpc_client::RpcClient};
 use solana_sdk::signature::{read_keypair_file, Keypair};
+use static_leader::StaticLeaderImpl;
 use tokio::sync::RwLock;
 use tracing::{error, info};
 use transaction_store::TransactionStoreImpl;
@@ -116,12 +118,14 @@ async fn main() -> anyhow::Result<()> {
     let rpc_client = Arc::new(RpcClient::new(env.rpc_url.unwrap()));
     let num_leaders = env.num_leaders.unwrap_or(2);
     let leader_offset = env.leader_offset.unwrap_or(0);
-    let leader_tracker = Arc::new(LeaderTrackerImpl::new(
-        rpc_client,
-        solana_rpc.clone(),
-        num_leaders,
-        leader_offset,
-    ));
+    let leader_tracker = match env::var("STATIC_IP") {
+        Ok(leader_addr) => Arc::new(StaticLeaderImpl::new(leader_addr).into()),
+        Err(_) => Arc::new(
+            LeaderTrackerImpl::new(rpc_client, solana_rpc.clone(), num_leaders, leader_offset)
+                .into(),
+        ),
+    };
+
     let txn_send_retry_interval_seconds = env.txn_send_retry_interval.unwrap_or(2);
     let txn_sender = Arc::new(TxnSenderImpl::new(
         leader_tracker,

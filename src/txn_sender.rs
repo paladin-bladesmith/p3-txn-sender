@@ -16,7 +16,7 @@ use tonic::async_trait;
 use tracing::{error, info, warn};
 
 use crate::{
-    leader_tracker::LeaderTracker,
+    leader_tracker::{LeaderTracker, LeaderTrackerTrait},
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
     DEFAULT_P3_QUIC_PORT,
@@ -37,7 +37,7 @@ pub trait TxnSender: Send + Sync {
 }
 
 pub struct TxnSenderImpl {
-    leader_tracker: Arc<dyn LeaderTracker>,
+    leader_tracker: Arc<LeaderTracker>,
     transaction_store: Arc<dyn TransactionStore>,
     connection_cache: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
@@ -48,7 +48,7 @@ pub struct TxnSenderImpl {
 
 impl TxnSenderImpl {
     pub fn new(
-        leader_tracker: Arc<dyn LeaderTracker>,
+        leader_tracker: Arc<LeaderTracker>,
         transaction_store: Arc<dyn TransactionStore>,
         connection_cache: Arc<ConnectionCache>,
         solana_rpc: Arc<dyn SolanaRpc>,
