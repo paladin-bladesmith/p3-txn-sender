@@ -3,22 +3,23 @@ use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_program_runtime::compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT};
-use solana_sdk::transaction::{self, VersionedTransaction};
+use solana_sdk::transaction::{VersionedTransaction};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::{
     runtime::{Builder, Runtime},
-    time::{error::Elapsed, sleep, timeout},
+    time::{sleep, timeout},
 };
 use tonic::async_trait;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 use crate::{
-    leader_tracker::LeaderTracker,
+    leader_tracker::{LeaderTracker, LeaderTrackerTrait},
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
+    DEFAULT_P3_QUIC_PORT,
 };
 use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
 use solana_sdk::borsh0_10::try_from_slice_unchecked;
@@ -36,7 +37,7 @@ pub trait TxnSender: Send + Sync {
 }
 
 pub struct TxnSenderImpl {
-    leader_tracker: Arc<dyn LeaderTracker>,
+    leader_tracker: Arc<LeaderTracker>,
     transaction_store: Arc<dyn TransactionStore>,
     connection_cache: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
@@ -47,7 +48,7 @@ pub struct TxnSenderImpl {
 
 impl TxnSenderImpl {
     pub fn new(
-        leader_tracker: Arc<dyn LeaderTracker>,
+        leader_tracker: Arc<LeaderTracker>,
         transaction_store: Arc<dyn TransactionStore>,
         connection_cache: Arc<ConnectionCache>,
         solana_rpc: Arc<dyn SolanaRpc>,
@@ -78,8 +79,8 @@ impl TxnSenderImpl {
         let transaction_store = self.transaction_store.clone();
         let connection_cache = self.connection_cache.clone();
         let txn_sender_runtime = self.txn_sender_runtime.clone();
-        let txn_send_retry_interval_seconds = self.txn_send_retry_interval_seconds.clone();
-        let max_retry_queue_size = self.max_retry_queue_size.clone();
+        let txn_send_retry_interval_seconds = self.txn_send_retry_interval_seconds;
+        let max_retry_queue_size = self.max_retry_queue_size;
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
@@ -175,7 +176,7 @@ impl TxnSenderImpl {
     }
 
     fn track_transaction(&self, transaction_data: &TransactionData) {
-        let sent_at = transaction_data.sent_at.clone();
+        let sent_at = transaction_data.sent_at;
         let signature = get_signature(transaction_data);
         if signature.is_none() {
             return;
@@ -286,17 +287,20 @@ impl TxnSender for TxnSenderImpl {
             .unwrap_or("none".to_string());
         let mut leader_num = 0;
         for leader in self.leader_tracker.get_leaders() {
-            if leader.tpu_quic.is_none() {
-                error!("leader {:?} has no tpu_quic", leader);
+            if leader.gossip.is_none() {
+                error!("leader {:?} has no gossip", leader);
                 continue;
             }
             let connection_cache = self.connection_cache.clone();
             let wire_transaction = transaction_data.wire_transaction.clone();
             let api_key = api_key.clone();
             self.txn_sender_runtime.spawn(async move {
+                let mut p3_addr = leader.gossip.unwrap();
+                p3_addr.set_port(DEFAULT_P3_QUIC_PORT);
+                
                 for i in 0..SEND_TXN_RETRIES {
                     let conn =
-                        connection_cache.get_nonblocking_connection(&leader.tpu_quic.unwrap());
+                        connection_cache.get_nonblocking_connection(&p3_addr);
                     if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data(&wire_transaction)).await {
                             if let Err(e) = result {
                                 if i == SEND_TXN_RETRIES-1 {

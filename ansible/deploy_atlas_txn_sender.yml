@@ -4,6 +4,7 @@
   vars:
     user: ubuntu
     service: atlas-txn-sender
+    rust_version: 1.78.0
     rpc_url: <fill-in>
     grpc_url: <fill-in>
     x_token: <fill-in>

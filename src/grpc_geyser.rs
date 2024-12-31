@@ -65,7 +65,7 @@ impl GrpcGeyserImpl {
                 let mut grpc_tx;
                 let mut grpc_rx;
                 {
-                    let mut grpc_client = GeyserGrpcClient::connect::<String, String>(
+                    let grpc_client = GeyserGrpcClient::connect::<String, String>(
                         endpoint.clone(),
                         auth_header.clone(),
                         None,
@@ -138,7 +138,7 @@ impl GrpcGeyserImpl {
                 let mut grpc_tx;
                 let mut grpc_rx;
                 {
-                    let mut grpc_client = GeyserGrpcClient::connect::<String, String>(
+                    let grpc_client = GeyserGrpcClient::connect::<String, String>(
                         endpoint.clone(),
                         auth_header.clone(),
                         None,
@@ -202,7 +202,7 @@ impl SolanaRpc for GrpcGeyserImpl {
         // in practice if a tx doesn't land in less than 60 seconds it's probably not going to land
         while start.elapsed() < Duration::from_secs(60) {
             if let Some(block_time) = self.signature_cache.get(&signature) {
-                return Some(block_time.0.clone());
+                return Some(block_time.0);
             }
             sleep(Duration::from_millis(10)).await;
         }

@@ -2,7 +2,7 @@ use std::{
     fmt::Debug,
     str::FromStr,
     sync::Arc,
-    time::{Duration, Instant, SystemTime},
+    time::{Instant},
 };
 
 use cadence_macros::{statsd_count, statsd_time};
@@ -146,8 +146,8 @@ fn param<T: FromStr>(param_str: &str, thing: &str) -> Result<T, ErrorObjectOwned
 
 fn log_error<T: Debug>(metric: &str) -> impl Fn(T) -> T {
     let metric = metric.to_string();
-    return move |e: T| -> T {
+    move |e: T| -> T {
         error!(metric = metric, "{:?}", e);
         e
-    };
+    }
 }

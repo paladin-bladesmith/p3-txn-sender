@@ -1,4 +1,3 @@
-use core::panic;
 use std::{
     collections::HashMap,
     sync::{
@@ -10,6 +9,7 @@ use std::{
 
 use cadence_macros::statsd_time;
 use dashmap::DashMap;
+use enum_dispatch::enum_dispatch;
 use indexmap::IndexMap;
 use solana_client::rpc_client::RpcClient;
 use solana_rpc_client_api::response::RpcContactInfo;
@@ -17,9 +17,16 @@ use solana_sdk::slot_history::Slot;
 use tokio::time::sleep;
 use tracing::{debug, error, info};
 
-use crate::{errors::AtlasTxnSenderError, solana_rpc::SolanaRpc};
+use crate::{errors::AtlasTxnSenderError, solana_rpc::SolanaRpc, static_leader::StaticLeaderImpl};
 
-pub trait LeaderTracker: Send + Sync {
+#[enum_dispatch]
+pub enum LeaderTracker {
+    LeaderTrackerImpl,
+    StaticLeaderImpl,
+}
+
+#[enum_dispatch(LeaderTracker)]
+pub trait LeaderTrackerTrait: Send + Sync {
     /// get_leaders returns the next slot leaders in order
     fn get_leaders(&self) -> Vec<RpcContactInfo>;
 }
@@ -126,8 +133,8 @@ impl LeaderTrackerImpl {
         let cur_slot = self.cur_slot.load(Ordering::Relaxed);
         let mut slots_to_remove = vec![];
         for leaders in self.cur_leaders.iter() {
-            if leaders.key().clone() < cur_slot {
-                slots_to_remove.push(leaders.key().clone());
+            if *leaders.key() < cur_slot {
+                slots_to_remove.push(*leaders.key());
             }
         }
         for slot in slots_to_remove {
@@ -138,15 +145,15 @@ impl LeaderTrackerImpl {
 
 fn _get_start_slot(next_slot: u64, leader_offset: i64) -> u64 {
     let slot_buffer = leader_offset * (NUM_LEADERS_PER_SLOT as i64);
-    let start_slot = if slot_buffer > 0 {
+    
+    if slot_buffer > 0 {
         next_slot + slot_buffer as u64
     } else {
-        next_slot - slot_buffer.abs() as u64
-    };
-    start_slot
+        next_slot - slot_buffer.unsigned_abs()
+    }
 }
 
-impl LeaderTracker for LeaderTrackerImpl {
+impl LeaderTrackerTrait for LeaderTrackerImpl {
     fn get_leaders(&self) -> Vec<RpcContactInfo> {
         let start_slot = self.cur_slot.load(Ordering::Relaxed);
         let end_slot = start_slot + (self.num_leaders * NUM_LEADERS_PER_SLOT) as u64;
@@ -168,7 +175,6 @@ impl LeaderTracker for LeaderTrackerImpl {
         leaders
             .values()
             .clone()
-            .into_iter()
             .map(|v| v.to_owned())
             .collect()
     }

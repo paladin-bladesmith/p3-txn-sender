@@ -3,6 +3,7 @@ mod grpc_geyser;
 mod leader_tracker;
 mod rpc_server;
 mod solana_rpc;
+mod static_leader;
 mod transaction_store;
 mod txn_sender;
 mod utils;
@@ -19,16 +20,15 @@ use cadence_macros::set_global_default;
 use figment::{providers::Env, Figment};
 use grpc_geyser::GrpcGeyserImpl;
 use jsonrpsee::server::{middleware::ProxyGetRequestLayer, ServerBuilder};
-use leader_tracker::LeaderTrackerImpl;
+use leader_tracker::{LeaderTrackerImpl};
 use rpc_server::{AtlasTxnSenderImpl, AtlasTxnSenderServer};
 use serde::Deserialize;
 use solana_client::{connection_cache::ConnectionCache, rpc_client::RpcClient};
 use solana_sdk::signature::{read_keypair_file, Keypair};
-use tokio::sync::RwLock;
+use static_leader::StaticLeaderImpl;
 use tracing::{error, info};
 use transaction_store::TransactionStoreImpl;
 use txn_sender::TxnSenderImpl;
-use yellowstone_grpc_client::GeyserGrpcClient;
 
 #[derive(Debug, Deserialize)]
 struct AtlasTxnSenderEnv {
@@ -46,6 +46,9 @@ struct AtlasTxnSenderEnv {
     max_retry_queue_size: Option<usize>,
 }
 
+// This should match the default P3 QUIC port in the Paladin config
+pub const DEFAULT_P3_QUIC_PORT: u16 = 4819;
+
 // Defualt on RPC is 4
 pub const DEFAULT_TPU_CONNECTION_POOL_SIZE: usize = 4;
 
@@ -60,8 +63,7 @@ async fn main() -> anyhow::Result<()> {
     // Init metrics/logging
     let env: AtlasTxnSenderEnv = Figment::from(Env::raw()).extract().unwrap();
     let env_filter = env::var("RUST_LOG")
-        .or::<Result<String, ()>>(Ok("info".to_string()))
-        .unwrap();
+        .unwrap_or("info".to_string());
     tracing_subscriber::fmt()
         .with_env_filter(env_filter)
         .json()
@@ -88,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
         let identity_keypair =
             read_keypair_file(identity_keypair_file).expect("keypair file must exist");
         connection_cache = Arc::new(ConnectionCache::new_with_client_options(
-            "atlas-txn-sender",
+            "p3-txn-sender",
             tpu_connection_pool_size,
             None, // created if none specified
             Some((&identity_keypair, IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))),
@@ -97,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         let identity_keypair = Keypair::new();
         connection_cache = Arc::new(ConnectionCache::new_with_client_options(
-            "atlas-txn-sender",
+            "p3-txn-sender",
             tpu_connection_pool_size,
             None, // created if none specified
             Some((&identity_keypair, IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)))),
@@ -113,12 +115,14 @@ async fn main() -> anyhow::Result<()> {
     let rpc_client = Arc::new(RpcClient::new(env.rpc_url.unwrap()));
     let num_leaders = env.num_leaders.unwrap_or(2);
     let leader_offset = env.leader_offset.unwrap_or(0);
-    let leader_tracker = Arc::new(LeaderTrackerImpl::new(
-        rpc_client,
-        solana_rpc.clone(),
-        num_leaders,
-        leader_offset,
-    ));
+    let leader_tracker = match env::var("STATIC_IP") {
+        Ok(leader_addr) => Arc::new(StaticLeaderImpl::new(leader_addr).into()),
+        Err(_) => Arc::new(
+            LeaderTrackerImpl::new(rpc_client, solana_rpc.clone(), num_leaders, leader_offset)
+                .into(),
+        ),
+    };
+
     let txn_send_retry_interval_seconds = env.txn_send_retry_interval.unwrap_or(2);
     let txn_sender = Arc::new(TxnSenderImpl::new(
         leader_tracker,
@@ -139,11 +143,9 @@ async fn main() -> anyhow::Result<()> {
 
 fn new_metrics_client() {
     let uri = env::var("METRICS_URI")
-        .or::<String>(Ok("127.0.0.1".to_string()))
-        .unwrap();
+        .unwrap_or("127.0.0.1".to_string());
     let port = env::var("METRICS_PORT")
-        .or::<String>(Ok("7998".to_string()))
-        .unwrap()
+        .unwrap_or("7998".to_string())
         .parse::<u16>()
         .unwrap();
     info!("collecting metrics on: {}:{}", uri, port);
@@ -153,7 +155,7 @@ fn new_metrics_client() {
     let host = (uri, port);
     let udp_sink = BufferedUdpMetricSink::from(host, socket).unwrap();
     let queuing_sink = QueuingMetricSink::from(udp_sink);
-    let builder = StatsdClient::builder("atlas_txn_sender", queuing_sink);
+    let builder = StatsdClient::builder("p3_txn_sender", queuing_sink);
     let client = builder
         .with_error_handler(|e| error!("statsd metrics error: {}", e))
         .build();
