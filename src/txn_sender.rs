@@ -3,7 +3,7 @@ use solana_client::{
     connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
 };
 use solana_program_runtime::compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT};
-use solana_sdk::transaction::{VersionedTransaction};
+use solana_sdk::transaction::VersionedTransaction;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -92,7 +92,7 @@ impl TxnSenderImpl {
                 if let Some(max_size) = max_retry_queue_size {
                     if queue_length > max_size {
                         warn!(
-                            "Transaction retry queue length is over the limit of {}: {}. Load shedding transactions with highest retry count.", 
+                            "Transaction retry queue length is over the limit of {}: {}. Load shedding transactions with highest retry count.",
                             max_size,
                             queue_length
                         );
@@ -131,6 +131,8 @@ impl TxnSenderImpl {
                         let connection_cache = connection_cache.clone();
                         let sent_at = Instant::now();
                         let leader = Arc::new(leader.clone());
+                        let mut p3_addr = leader.gossip.unwrap();
+                        p3_addr.set_port(DEFAULT_P3_QUIC_PORT);
                         let wire_transaction = wire_transaction.clone();
                         txn_sender_runtime.spawn(async move {
                         // retry unless its a timeout
@@ -297,7 +299,7 @@ impl TxnSender for TxnSenderImpl {
             self.txn_sender_runtime.spawn(async move {
                 let mut p3_addr = leader.gossip.unwrap();
                 p3_addr.set_port(DEFAULT_P3_QUIC_PORT);
-                
+
                 for i in 0..SEND_TXN_RETRIES {
                     let conn =
                         connection_cache.get_nonblocking_connection(&p3_addr);

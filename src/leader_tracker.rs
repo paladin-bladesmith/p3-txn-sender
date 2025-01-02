@@ -145,7 +145,7 @@ impl LeaderTrackerImpl {
 
 fn _get_start_slot(next_slot: u64, leader_offset: i64) -> u64 {
     let slot_buffer = leader_offset * (NUM_LEADERS_PER_SLOT as i64);
-    
+
     if slot_buffer > 0 {
         next_slot + slot_buffer as u64
     } else {
@@ -172,10 +172,6 @@ impl LeaderTrackerTrait for LeaderTrackerImpl {
             leaders.clone().keys(),
             start_slot
         );
-        leaders
-            .values()
-            .clone()
-            .map(|v| v.to_owned())
-            .collect()
+        leaders.values().clone().map(|v| v.to_owned()).collect()
     }
 }

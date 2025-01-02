@@ -20,7 +20,7 @@ use cadence_macros::set_global_default;
 use figment::{providers::Env, Figment};
 use grpc_geyser::GrpcGeyserImpl;
 use jsonrpsee::server::{middleware::ProxyGetRequestLayer, ServerBuilder};
-use leader_tracker::{LeaderTrackerImpl};
+use leader_tracker::LeaderTrackerImpl;
 use rpc_server::{AtlasTxnSenderImpl, AtlasTxnSenderServer};
 use serde::Deserialize;
 use solana_client::{connection_cache::ConnectionCache, rpc_client::RpcClient};
@@ -62,8 +62,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 async fn main() -> anyhow::Result<()> {
     // Init metrics/logging
     let env: AtlasTxnSenderEnv = Figment::from(Env::raw()).extract().unwrap();
-    let env_filter = env::var("RUST_LOG")
-        .unwrap_or("info".to_string());
+    let env_filter = env::var("RUST_LOG").unwrap_or("info".to_string());
     tracing_subscriber::fmt()
         .with_env_filter(env_filter)
         .json()
@@ -142,8 +141,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn new_metrics_client() {
-    let uri = env::var("METRICS_URI")
-        .unwrap_or("127.0.0.1".to_string());
+    let uri = env::var("METRICS_URI").unwrap_or("127.0.0.1".to_string());
     let port = env::var("METRICS_PORT")
         .unwrap_or("7998".to_string())
         .parse::<u16>()
