@@ -124,10 +124,6 @@ impl TxnSenderImpl {
                 for wire_transaction in wire_transactions.iter() {
                     let mut leader_num = 0;
                     for leader in leader_tracker.get_leaders() {
-                        if leader.tpu_quic.is_none() {
-                            error!("leader {:?} has no tpu_quic", leader);
-                            continue;
-                        }
                         let connection_cache = connection_cache.clone();
                         let sent_at = Instant::now();
                         let leader = Arc::new(leader.clone());
@@ -138,7 +134,7 @@ impl TxnSenderImpl {
                         // retry unless its a timeout
                         for i in 0..SEND_TXN_RETRIES {
                             let conn = connection_cache
-                                .get_nonblocking_connection(&leader.tpu_quic.unwrap());
+                                .get_nonblocking_connection(&p3_addr);
                             if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA_BATCH, conn.send_data(&wire_transaction)).await {
                                 if let Err(e) = result {
                                     if i == SEND_TXN_RETRIES-1 {
