@@ -46,9 +46,6 @@ struct AtlasTxnSenderEnv {
     max_retry_queue_size: Option<usize>,
 }
 
-// This should match the default P3 QUIC port in the Paladin config
-pub const DEFAULT_P3_QUIC_PORT: u16 = 4819;
-
 // Defualt on RPC is 4
 pub const DEFAULT_TPU_CONNECTION_POOL_SIZE: usize = 4;
 

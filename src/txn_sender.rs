@@ -19,7 +19,6 @@ use crate::{
     leader_tracker::{LeaderTracker, LeaderTrackerTrait},
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
-    DEFAULT_P3_QUIC_PORT,
 };
 use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
 use solana_sdk::borsh0_10::try_from_slice_unchecked;
@@ -38,6 +37,7 @@ pub trait TxnSender: Send + Sync {
 
 pub struct TxnSenderImpl {
     leader_tracker: Arc<LeaderTracker>,
+    p3_port: u16,
     transaction_store: Arc<dyn TransactionStore>,
     connection_cache: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
@@ -63,6 +63,9 @@ impl TxnSenderImpl {
             .unwrap();
         let txn_sender = Self {
             leader_tracker,
+            p3_port: std::env::var("P3_PORT")
+                .map(|port| port.parse().expect("Invalid P3_PORT"))
+                .unwrap_or(4819),
             transaction_store,
             connection_cache,
             solana_rpc,
@@ -81,6 +84,7 @@ impl TxnSenderImpl {
         let txn_sender_runtime = self.txn_sender_runtime.clone();
         let txn_send_retry_interval_seconds = self.txn_send_retry_interval_seconds;
         let max_retry_queue_size = self.max_retry_queue_size;
+        let p3_port = self.p3_port;
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
@@ -128,7 +132,7 @@ impl TxnSenderImpl {
                         let sent_at = Instant::now();
                         let leader = Arc::new(leader.clone());
                         let mut p3_addr = leader.gossip.unwrap();
-                        p3_addr.set_port(DEFAULT_P3_QUIC_PORT);
+                        p3_addr.set_port(p3_port);
                         let wire_transaction = wire_transaction.clone();
                         txn_sender_runtime.spawn(async move {
                         // retry unless its a timeout
@@ -210,7 +214,7 @@ impl TxnSenderImpl {
 
             // Collect metrics
             // We separate the retry metrics to reduce the cardinality with API key and price.
-            let landed = if let Some(confirmed_at) = confirmed_at {
+            let landed = if confirmed_at.is_some() {
                 statsd_count!("transactions_landed", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
                 statsd_count!("transactions_landed_by_key", 1, "api_key" => &api_key);
                 statsd_time!("transaction_land_time", sent_at.elapsed(), "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
@@ -292,9 +296,10 @@ impl TxnSender for TxnSenderImpl {
             let connection_cache = self.connection_cache.clone();
             let wire_transaction = transaction_data.wire_transaction.clone();
             let api_key = api_key.clone();
+            let p3_port = self.p3_port;
             self.txn_sender_runtime.spawn(async move {
                 let mut p3_addr = leader.gossip.unwrap();
-                p3_addr.set_port(DEFAULT_P3_QUIC_PORT);
+                p3_addr.set_port(p3_port);
 
                 for i in 0..SEND_TXN_RETRIES {
                     let conn =

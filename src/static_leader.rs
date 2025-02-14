@@ -1,13 +1,8 @@
-use std::{
-    net::{SocketAddr},
-};
+use std::net::SocketAddr;
 
 use solana_rpc_client_api::response::RpcContactInfo;
 
-use crate::{
-    leader_tracker::LeaderTrackerTrait,
-    DEFAULT_P3_QUIC_PORT,
-};
+use crate::leader_tracker::LeaderTrackerTrait;
 
 #[derive(Clone)]
 pub struct StaticLeaderImpl {
@@ -16,10 +11,8 @@ pub struct StaticLeaderImpl {
 
 impl StaticLeaderImpl {
     pub fn new(leader_addr: String) -> Self {
-        let p3_addr = SocketAddr::new(
-            leader_addr.parse().expect("Invalid IP address"),
-            DEFAULT_P3_QUIC_PORT,
-        );
+        // NB: Port is overridden by TxnSender.
+        let p3_addr = SocketAddr::new(leader_addr.parse().expect("Invalid IP address"), 1);
         let static_leader = RpcContactInfo {
             pubkey: "STATIC_LEADER".to_string(),
             gossip: Some(p3_addr),
