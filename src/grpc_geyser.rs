@@ -13,7 +13,9 @@ use solana_sdk::signature::Signature;
 use tokio::time::sleep;
 use tonic::async_trait;
 use tracing::error;
-use yellowstone_grpc_client::GeyserGrpcClient;
+use yellowstone_grpc_client::{
+    ClientTlsConfig, GeyserGrpcBuilderError, GeyserGrpcClient, Interceptor,
+};
 use yellowstone_grpc_proto::geyser::SubscribeRequestFilterBlocks;
 use yellowstone_grpc_proto::geyser::{
     subscribe_update::UpdateOneof, CommitmentLevel, SubscribeRequest, SubscribeRequestFilterSlots,
@@ -45,6 +47,23 @@ impl GrpcGeyserImpl {
         grpc_geyser
     }
 
+    async fn connect(
+        endpoint: String,
+        auth_header: Option<String>,
+    ) -> Result<GeyserGrpcClient<impl Interceptor>, GeyserGrpcBuilderError> {
+        GeyserGrpcClient::build_from_shared(endpoint)
+            .unwrap()
+            .x_token(auth_header)
+            .unwrap()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(10))
+            .tls_config(ClientTlsConfig::new().with_native_roots())
+            .unwrap()
+            .max_decoding_message_size(1024 * 1024 * 1024)
+            .connect()
+            .await
+    }
+
     fn clean_signature_cache(&self) {
         let signature_cache = self.signature_cache.clone();
         tokio::spawn(async move {
@@ -65,11 +84,8 @@ impl GrpcGeyserImpl {
                 let mut grpc_tx;
                 let mut grpc_rx;
                 {
-                    let grpc_client = GeyserGrpcClient::connect::<String, String>(
-                        endpoint.clone(),
-                        auth_header.clone(),
-                        None,
-                    );
+                    let grpc_client = Self::connect(endpoint.clone(), auth_header.clone()).await;
+
                     if let Err(e) = grpc_client {
                         error!("Error connecting to gRPC, waiting one second then retrying connect: {}", e);
                         statsd_count!("grpc_connect_error", 1);
@@ -94,8 +110,9 @@ impl GrpcGeyserImpl {
                             Some(UpdateOneof::Block(block)) => {
                                 let block_time = block.block_time.unwrap().timestamp;
                                 for transaction in block.transactions {
-                                    let signature =
-                                        Signature::new(&transaction.signature).to_string();
+                                    let signature = Signature::try_from(transaction.signature)
+                                        .unwrap()
+                                        .to_string();
                                     signature_cache.insert(signature, (block_time, Instant::now()));
                                 }
                             }
@@ -138,11 +155,8 @@ impl GrpcGeyserImpl {
                 let mut grpc_tx;
                 let mut grpc_rx;
                 {
-                    let grpc_client = GeyserGrpcClient::connect::<String, String>(
-                        endpoint.clone(),
-                        auth_header.clone(),
-                        None,
-                    );
+                    let grpc_client = Self::connect(endpoint.clone(), auth_header.clone()).await;
+
                     if let Err(e) = grpc_client {
                         error!("Error connecting to gRPC, waiting one second then retrying connect: {}", e);
                         statsd_count!("grpc_connect_error", 1);
@@ -247,6 +261,7 @@ fn get_slot_subscribe_request() -> SubscribeRequest {
             generate_random_string(20).to_string(),
             SubscribeRequestFilterSlots {
                 filter_by_commitment: Some(true),
+                interslot_updates: Some(false),
             },
         )]),
         ..Default::default()

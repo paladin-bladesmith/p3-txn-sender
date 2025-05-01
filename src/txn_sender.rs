@@ -1,9 +1,6 @@
 use cadence_macros::{statsd_count, statsd_gauge, statsd_time};
-use solana_client::{
-    connection_cache::ConnectionCache, nonblocking::tpu_connection::TpuConnection,
-};
-use solana_program_runtime::compute_budget::{ComputeBudget, MAX_COMPUTE_UNIT_LIMIT};
-use solana_sdk::transaction::VersionedTransaction;
+use solana_client::connection_cache::ConnectionCache;
+use solana_connection_cache::nonblocking::client_connection::ClientConnection;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -20,12 +17,7 @@ use crate::{
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
 };
-use solana_program_runtime::compute_budget::DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
-use solana_sdk::borsh0_10::try_from_slice_unchecked;
-use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
-const RETRY_COUNT_BINS: [i32; 6] = [0, 1, 2, 5, 10, 25];
-const MAX_RETRIES_BINS: [i32; 5] = [0, 1, 5, 10, 30];
 const MAX_TIMEOUT_SEND_DATA: Duration = Duration::from_millis(500);
 const MAX_TIMEOUT_SEND_DATA_BATCH: Duration = Duration::from_millis(500);
 const SEND_TXN_RETRIES: usize = 10;
@@ -126,8 +118,7 @@ impl TxnSenderImpl {
                     }
                 }
                 for wire_transaction in wire_transactions.iter() {
-                    let mut leader_num = 0;
-                    for leader in leader_tracker.get_leaders() {
+                    for (leader_num, leader) in leader_tracker.get_leaders().iter().enumerate() {
                         let connection_cache = connection_cache.clone();
                         let sent_at = Instant::now();
                         let leader = Arc::new(leader.clone());
@@ -164,7 +155,6 @@ impl TxnSenderImpl {
                             }
                         }
                     });
-                        leader_num += 1;
                     }
                 }
                 // remove transactions that reached max retries
@@ -178,7 +168,6 @@ impl TxnSenderImpl {
     }
 
     fn track_transaction(&self, transaction_data: &TransactionData) {
-        let sent_at = transaction_data.sent_at;
         let signature = get_signature(transaction_data);
         if signature.is_none() {
             return;
@@ -186,14 +175,7 @@ impl TxnSenderImpl {
         let signature = signature.unwrap();
         self.transaction_store
             .add_transaction(transaction_data.clone());
-        let PriorityDetails {
-            fee,
-            cu_limit,
-            priority,
-        } = compute_priority_details(&transaction_data.versioned_transaction);
-        let priority_fees_enabled = (fee > 0).to_string();
         let solana_rpc = self.solana_rpc.clone();
-        let transaction_store = self.transaction_store.clone();
         let api_key = transaction_data
             .request_metadata
             .clone()
@@ -201,81 +183,17 @@ impl TxnSenderImpl {
             .unwrap_or("none".to_string());
         self.txn_sender_runtime.spawn(async move {
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
-            let transcation_data = transaction_store.remove_transaction(signature);
-            let mut retries = None;
-            let mut max_retries = None;
-            if let Some(transaction_data) = transcation_data {
-                retries = Some(transaction_data.retry_count as i32);
-                max_retries = Some(transaction_data.max_retries as i32);
-            }
-
-            let retries_tag = bin_counter_to_tag(retries, &RETRY_COUNT_BINS.to_vec());
-            let max_retries_tag: String = bin_counter_to_tag(max_retries, &MAX_RETRIES_BINS.to_vec());
 
             // Collect metrics
             // We separate the retry metrics to reduce the cardinality with API key and price.
-            let landed = if confirmed_at.is_some() {
-                statsd_count!("transactions_landed", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
+            if confirmed_at.is_some() {
                 statsd_count!("transactions_landed_by_key", 1, "api_key" => &api_key);
-                statsd_time!("transaction_land_time", sent_at.elapsed(), "api_key" => &api_key, "priority_fees_enabled" => &priority_fees_enabled);
                 "true"
             } else {
-                statsd_count!("transactions_not_landed", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
                 statsd_count!("transactions_not_landed_by_key", 1, "api_key" => &api_key);
-                statsd_count!("transactions_not_landed_retries", 1, "priority_fees_enabled" => &priority_fees_enabled, "retries" => &retries_tag, "max_retries_tag" => &max_retries_tag);
                 "false"
             };
-            statsd_time!("transaction_priority", priority, "landed" => &landed);
-            statsd_time!("transaction_priority_fee", fee, "landed" => &landed);
-            statsd_time!("transaction_compute_limit", cu_limit as u64, "landed" => &landed);
         });
-    }
-}
-
-pub struct PriorityDetails {
-    pub fee: u64,
-    pub cu_limit: u32,
-    pub priority: u64,
-}
-
-pub fn compute_priority_details(transaction: &VersionedTransaction) -> PriorityDetails {
-    let mut cu_limit = DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT;
-    let mut compute_budget = ComputeBudget::new(DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT as u64);
-    if let Err(e) = transaction.sanitize() {
-        return PriorityDetails {
-            fee: 0,
-            priority: 0,
-            cu_limit,
-        };
-    }
-    let instructions = transaction.message.instructions().iter().map(|ix| {
-        match try_from_slice_unchecked(&ix.data) {
-            Ok(ComputeBudgetInstruction::SetComputeUnitLimit(compute_unit_limit)) => {
-                cu_limit = compute_unit_limit.min(MAX_COMPUTE_UNIT_LIMIT);
-            }
-            _ => {}
-        }
-        (
-            transaction
-                .message
-                .static_account_keys()
-                .get(usize::from(ix.program_id_index))
-                .expect("program id index is sanitized"),
-            ix,
-        )
-    });
-    let compute_budget = compute_budget.process_instructions(instructions, true, true);
-    match compute_budget {
-        Ok(compute_budget) => PriorityDetails {
-            fee: compute_budget.get_fee(),
-            priority: compute_budget.get_priority(),
-            cu_limit,
-        },
-        Err(e) => PriorityDetails {
-            fee: 0,
-            priority: 0,
-            cu_limit,
-        },
     }
 }
 
@@ -332,37 +250,4 @@ impl TxnSender for TxnSenderImpl {
             leader_num += 1;
         }
     }
-}
-
-fn bin_counter_to_tag(counter: Option<i32>, bins: &Vec<i32>) -> String {
-    if counter.is_none() {
-        return "none".to_string();
-    }
-    let counter = counter.unwrap();
-
-    // Iterate through the bins vector to find the appropriate bin
-    let mut bin_start = "-inf".to_string();
-    let mut bin_end = "inf".to_string();
-    for bin in bins.iter().rev() {
-        if counter >= *bin {
-            bin_start = bin.to_string();
-            break;
-        }
-
-        bin_end = bin.to_string();
-    }
-    format!("{}_{}", bin_start, bin_end)
-}
-
-#[test]
-fn test_bin_counter() {
-    let bins = vec![0, 1, 2, 5, 10, 25];
-    assert_eq!(bin_counter_to_tag(None, &bins), "none");
-    assert_eq!(bin_counter_to_tag(Some(-100), &bins), "-inf_0");
-    assert_eq!(bin_counter_to_tag(Some(0), &bins), "0_1");
-    assert_eq!(bin_counter_to_tag(Some(1), &bins), "1_2");
-    assert_eq!(bin_counter_to_tag(Some(2), &bins), "2_5");
-    assert_eq!(bin_counter_to_tag(Some(3), &bins), "2_5");
-    assert_eq!(bin_counter_to_tag(Some(17), &bins), "10_25");
-    assert_eq!(bin_counter_to_tag(Some(34), &bins), "25_inf");
 }

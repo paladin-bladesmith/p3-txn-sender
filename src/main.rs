@@ -6,7 +6,6 @@ mod solana_rpc;
 mod static_leader;
 mod transaction_store;
 mod txn_sender;
-mod utils;
 mod vendor;
 
 use std::{

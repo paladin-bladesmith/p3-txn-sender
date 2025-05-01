@@ -19,6 +19,7 @@ use tracing::{debug, error, info};
 
 use crate::{errors::AtlasTxnSenderError, solana_rpc::SolanaRpc, static_leader::StaticLeaderImpl};
 
+#[allow(clippy::large_enum_variant)]
 #[enum_dispatch]
 pub enum LeaderTracker {
     LeaderTrackerImpl,
