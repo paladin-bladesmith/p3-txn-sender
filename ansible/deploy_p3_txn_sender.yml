@@ -1,15 +1,17 @@
-- name: atlas-txn-sender setup
+- name: p3-txn-sender setup
   become: yes
   hosts: all
   vars:
-    user: ubuntu
-    service: atlas-txn-sender
+    user: p3
+    identity_keypair_file: /home/p3/id.json
+    service: p3-txn-sender
     rust_version: 1.78.0
-    rpc_url: <fill-in>
-    grpc_url: <fill-in>
-    x_token: <fill-in>
-    datadog_api_key: <fill-in>
-    datadog_site: <fill-in>
+    rpc_url:
+    grpc_url:
+    x_token: 
+    leader_offset: 0
+    datadog_api_key: 
+    datadog_site: 
     datadog_config:
       dogstatsd_port: 7998
       use_dogstatsd: true
@@ -17,10 +19,9 @@
       tags:
         - "staked:{{staked|default('false')}}"
         - "env:prod"
-        - "service:atlas_txn_sender"
+        - "service:p3_txn_sender"
         - "network:mainnet"
         - "region:{{region}}"
-        - "fleet_type:{{fleet_type|default('atlas')}}"
   tasks:
     - name: Execute datadog setup
       include_role:
@@ -31,6 +32,6 @@
     - name: Install rust
       include_role:
        name: install-rust
-    - name: Execute atlas-txn-sender setup
+    - name: Execute p3-txn-sender setup
       include_role:
-       name: atlas-txn-sender
+       name: p3-txn-sender

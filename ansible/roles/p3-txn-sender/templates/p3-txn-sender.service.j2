@@ -1,0 +1,19 @@
+[Unit]
+Description=p3-txn-sender
+After=network.target
+
+[Service]
+Environment=RPC_URL={{rpc_url}}
+Environment=GRPC_URL={{grpc_url}}
+{% if x_token is defined and x_token | trim %}Environment=X_TOKEN={{x_token}}{% endif %}
+Environment=TPU_CONNECTION_POOL_SIZE=5
+Environment=NUM_LEADERS=5
+Environment=LEADER_OFFSET={{leader_offset}}
+Environment=IDENTITY_KEYPAIR_FILE={{identity_keypair_file}}
+ExecStart=/home/{{ user }}/p3-txn-sender/target/release/p3_txn_sender
+User={{ user }}
+Restart=on-failure
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=multi-user.target

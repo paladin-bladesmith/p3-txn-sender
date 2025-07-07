@@ -1,0 +1,51 @@
+- name: Stop service before deployment
+  become: true
+  become_user: root
+  shell: sudo systemctl stop p3-txn-sender.service || true
+  ignore_errors: yes
+
+- name: Remove existing repo directory
+  become: true
+  become_user: "{{ user }}"
+  file:
+    path: /home/{{ user }}/p3-txn-sender
+    state: absent
+
+- name: Clone repo fresh
+  become: true
+  become_user: "{{ user }}"
+  git:
+    repo: https://github.com/paladin-bladesmith/p3-txn-sender
+    dest: /home/{{ user }}/p3-txn-sender
+    version: main
+    force: yes
+- name: Build the program
+  become: true
+  become_user: "{{ user }}"
+  shell: source ~/.profile && cargo build --release
+  args:
+    chdir: /home/{{ user }}/p3-txn-sender/
+    executable: /bin/bash
+
+- name: copy service template
+  become: true
+  become_user: root
+  template:
+      src: templates/p3-txn-sender.service.j2
+      dest: /etc/systemd/system/p3-txn-sender.service
+      owner: root
+      group: root
+      mode: '0755'
+
+- name: Reload Systemd daemon
+  become: true
+  become_user: root
+  shell: sudo systemctl daemon-reload
+- name: enable service
+  become: true
+  become_user: root
+  shell: sudo systemctl enable p3-txn-sender.service
+- name: start service
+  become: true
+  become_user: root
+  shell: sudo systemctl restart p3-txn-sender.service
