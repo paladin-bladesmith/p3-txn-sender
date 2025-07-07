@@ -1,6 +1,7 @@
 mod errors;
 mod grpc_geyser;
 mod leader_tracker;
+mod paladin_tracker;
 mod rpc_server;
 mod solana_rpc;
 mod static_leader;
@@ -21,6 +22,7 @@ use figment::{providers::Env, Figment};
 use grpc_geyser::GrpcGeyserImpl;
 use jsonrpsee::server::{middleware::ProxyGetRequestLayer, ServerBuilder};
 use leader_tracker::LeaderTrackerImpl;
+use paladin_tracker::PaladinTracker;
 use rpc_server::{AtlasTxnSenderImpl, AtlasTxnSenderServer};
 use serde::Deserialize;
 use solana_client::{connection_cache::ConnectionCache, rpc_client::RpcClient};
@@ -104,6 +106,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let transaction_store = Arc::new(TransactionStoreImpl::new());
+    let paladin_tracker = Arc::new(PaladinTracker::new());
+    
+    // initialize paladin tracker
+    paladin_tracker.initialize().await?;
+    paladin_tracker.start_background_updates().await;
+    
     let solana_rpc = Arc::new(GrpcGeyserImpl::new(
         env.grpc_url.clone().unwrap(),
         env.x_token.clone(),
@@ -125,6 +133,7 @@ async fn main() -> anyhow::Result<()> {
         transaction_store.clone(),
         connection_cache,
         solana_rpc,
+        paladin_tracker,
         env.txn_sender_threads.unwrap_or(4),
         txn_send_retry_interval_seconds,
         env.max_retry_queue_size,

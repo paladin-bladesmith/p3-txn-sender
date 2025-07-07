@@ -408,6 +408,7 @@ dependencies = [
  "jsonrpsee",
  "jsonrpsee-types 0.18.2",
  "rand 0.8.5",
+ "reqwest",
  "serde",
  "serde_json",
  "solana-client",

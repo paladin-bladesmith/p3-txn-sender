@@ -17,6 +17,7 @@ use tracing::{error, warn};
 
 use crate::{
     leader_tracker::{LeaderTracker, LeaderTrackerTrait},
+    paladin_tracker::PaladinTracker,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
 };
@@ -41,6 +42,7 @@ pub struct TxnSenderImpl {
     transaction_store: Arc<dyn TransactionStore>,
     connection_cache: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
+    paladin_tracker: Arc<PaladinTracker>,
     txn_sender_runtime: Arc<Runtime>,
     txn_send_retry_interval_seconds: usize,
     max_retry_queue_size: Option<usize>,
@@ -52,6 +54,7 @@ impl TxnSenderImpl {
         transaction_store: Arc<dyn TransactionStore>,
         connection_cache: Arc<ConnectionCache>,
         solana_rpc: Arc<dyn SolanaRpc>,
+        paladin_tracker: Arc<PaladinTracker>,
         txn_sender_threads: usize,
         txn_send_retry_interval_seconds: usize,
         max_retry_queue_size: Option<usize>,
@@ -69,12 +72,30 @@ impl TxnSenderImpl {
             transaction_store,
             connection_cache,
             solana_rpc,
+            paladin_tracker,
             txn_sender_runtime: Arc::new(txn_sender_runtime),
             txn_send_retry_interval_seconds,
             max_retry_queue_size,
         };
         txn_sender.retry_transactions();
         txn_sender
+    }
+
+    /// determine the target address and port for a leader based on whether it's a paladin validator
+    fn get_target_address(&self, leader: &solana_rpc_client_api::response::RpcContactInfo) -> Option<std::net::SocketAddr> {
+        let is_paladin = self.txn_sender_runtime.block_on(
+            self.paladin_tracker.is_paladin_validator(&leader.pubkey)
+        );
+        if is_paladin {
+            // paladin validator - use p3 port on gossip address
+            leader.gossip.map(|mut addr| {
+                addr.set_port(self.p3_port);
+                addr
+            })
+        } else {
+            // non-paladin validator - use tpu address
+            leader.tpu
+        }
     }
 
     fn retry_transactions(&self) {
@@ -85,6 +106,7 @@ impl TxnSenderImpl {
         let txn_send_retry_interval_seconds = self.txn_send_retry_interval_seconds;
         let max_retry_queue_size = self.max_retry_queue_size;
         let p3_port = self.p3_port;
+        let paladin_tracker = self.paladin_tracker.clone();
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
@@ -131,39 +153,54 @@ impl TxnSenderImpl {
                         let connection_cache = connection_cache.clone();
                         let sent_at = Instant::now();
                         let leader = Arc::new(leader.clone());
-                        let mut p3_addr = leader.gossip.unwrap();
-                        p3_addr.set_port(p3_port);
-                        let wire_transaction = wire_transaction.clone();
-                        txn_sender_runtime.spawn(async move {
-                        // retry unless its a timeout
-                        for i in 0..SEND_TXN_RETRIES {
-                            let conn = connection_cache
-                                .get_nonblocking_connection(&p3_addr);
-                            if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA_BATCH, conn.send_data(&wire_transaction)).await {
-                                if let Err(e) = result {
-                                    if i == SEND_TXN_RETRIES-1 {
-                                        error!(
-                                            retry = "true",
-                                            "Failed to send transaction batch to {:?}: {}",
-                                            leader, e
-                                        );
-                                        statsd_count!("transaction_send_error", 1, "retry" => "true", "last_attempt" => "true");
+                        
+                        // determine target address based on paladin status
+                        let target_addr = if paladin_tracker.is_paladin_validator(&leader.pubkey).await {
+                            // paladin validator - use p3 port on gossip address
+                            leader.gossip.map(|mut addr| {
+                                addr.set_port(p3_port);
+                                addr
+                            })
+                        } else {
+                            // non-paladin validator - use tpu address
+                            leader.tpu
+                        };
+                        
+                        if let Some(target_addr) = target_addr {
+                            let wire_transaction = wire_transaction.clone();
+                            txn_sender_runtime.spawn(async move {
+                                // retry unless its a timeout
+                                for i in 0..SEND_TXN_RETRIES {
+                                    let conn = connection_cache
+                                        .get_nonblocking_connection(&target_addr);
+                                    if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA_BATCH, conn.send_data(&wire_transaction)).await {
+                                        if let Err(e) = result {
+                                            if i == SEND_TXN_RETRIES-1 {
+                                                error!(
+                                                    retry = "true",
+                                                    "Failed to send transaction batch to {:?}: {}",
+                                                    leader, e
+                                                );
+                                                statsd_count!("transaction_send_error", 1, "retry" => "true", "last_attempt" => "true");
+                                            } else {
+                                                statsd_count!("transaction_send_error", 1, "retry" => "true", "last_attempt" => "false");
+                                            }
+                                        } else {
+                                            let leader_num_str = leader_num.to_string();
+                                            statsd_time!(
+                                                "transaction_received_by_leader",
+                                                sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "retry" => "true");
+                                            return;
+                                        }
                                     } else {
-                                        statsd_count!("transaction_send_error", 1, "retry" => "true", "last_attempt" => "false");
+                                        // Note: This is far too frequent to log. It will fill the disks on the host and cost too much on DD.
+                                        statsd_count!("transaction_send_timeout", 1);
                                     }
-                                } else {
-                                    let leader_num_str = leader_num.to_string();
-                                    statsd_time!(
-                                        "transaction_received_by_leader",
-                                        sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => "not_applicable", "retry" => "true");
-                                    return;
                                 }
-                            } else {
-                                // Note: This is far too frequent to log. It will fill the disks on the host and cost too much on DD.
-                                statsd_count!("transaction_send_timeout", 1);
-                            }
+                            });
+                        } else {
+                            error!("Leader {:?} has no valid target address (gossip or tpu)", leader);
                         }
-                    });
                         leader_num += 1;
                     }
                 }
@@ -289,33 +326,39 @@ impl TxnSender for TxnSenderImpl {
             .unwrap_or("none".to_string());
         let mut leader_num = 0;
         for leader in self.leader_tracker.get_leaders() {
-            if leader.gossip.is_none() {
-                error!("leader {:?} has no gossip", leader);
+            // determine target address based on paladin status
+            let target_addr = self.get_target_address(&leader);
+            
+            if target_addr.is_none() {
+                error!("leader {:?} has no valid target address (gossip or tpu)", leader);
                 continue;
             }
+            
+            let target_addr = target_addr.unwrap();
             let connection_cache = self.connection_cache.clone();
             let wire_transaction = transaction_data.wire_transaction.clone();
             let api_key = api_key.clone();
-            let p3_port = self.p3_port;
+            let is_paladin = self.txn_sender_runtime.block_on(
+                self.paladin_tracker.is_paladin_validator(&leader.pubkey)
+            );
+            
             self.txn_sender_runtime.spawn(async move {
-                let mut p3_addr = leader.gossip.unwrap();
-                p3_addr.set_port(p3_port);
-
                 for i in 0..SEND_TXN_RETRIES {
-                    let conn =
-                        connection_cache.get_nonblocking_connection(&p3_addr);
+                    let conn = connection_cache.get_nonblocking_connection(&target_addr);
                     if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data(&wire_transaction)).await {
-                            if let Err(e) = result {
-                                if i == SEND_TXN_RETRIES-1 {
-                                    error!(
-                                        retry = "false",
-                                        "Failed to send transaction to {:?}: {}",
-                                        leader, e
-                                    );
-                                    statsd_count!("transaction_send_error", 1, "retry" => "false", "last_attempt" => "true");
-                                } else {
-                                    statsd_count!("transaction_send_error", 1, "retry" => "false", "last_attempt" => "false");
-                                }
+                        if let Err(e) = result {
+                            if i == SEND_TXN_RETRIES-1 {
+                                error!(
+                                    retry = "false",
+                                    paladin = is_paladin,
+                                    target_port = target_addr.port(),
+                                    "Failed to send transaction to {:?}: {}",
+                                    leader, e
+                                );
+                                statsd_count!("transaction_send_error", 1, "retry" => "false", "last_attempt" => "true");
+                            } else {
+                                statsd_count!("transaction_send_error", 1, "retry" => "false", "last_attempt" => "false");
+                            }
                         } else {
                             let leader_num_str = leader_num.to_string();
                             statsd_time!(
