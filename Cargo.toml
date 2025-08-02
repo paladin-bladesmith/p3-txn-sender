@@ -32,5 +32,3 @@ indexmap = "2.2.5"
 enum_dispatch = "0.3.13"
 solana-connection-cache = "2.2.7"
 
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = "0.5"

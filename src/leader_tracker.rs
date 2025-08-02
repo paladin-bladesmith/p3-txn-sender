@@ -105,12 +105,12 @@ impl LeaderTrackerImpl {
         // polling 1000 slots ahead is more than enough
         let slot_leaders = self.rpc_client.get_slot_leaders(next_slot, 1000);
         if let Err(e) = slot_leaders {
-            return Err(format!("Error getting slot leaders: {}", e).into());
+            return Err(format!("Error getting slot leaders: {e}").into());
         }
         let slot_leaders = slot_leaders.unwrap();
         let new_cluster_nodes = self.rpc_client.get_cluster_nodes();
         if let Err(e) = new_cluster_nodes {
-            return Err(format!("Error getting cluster nodes: {}", e).into());
+            return Err(format!("Error getting cluster nodes: {e}").into());
         }
         let new_cluster_nodes = new_cluster_nodes.unwrap();
         let mut cluster_node_map = HashMap::new();

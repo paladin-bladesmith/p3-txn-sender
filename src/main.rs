@@ -48,12 +48,6 @@ struct AtlasTxnSenderEnv {
 // Defualt on RPC is 4
 pub const DEFAULT_TPU_CONNECTION_POOL_SIZE: usize = 4;
 
-#[cfg(not(target_env = "msvc"))]
-use tikv_jemallocator::Jemalloc;
-#[cfg(not(target_env = "msvc"))]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Init metrics/logging
@@ -104,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
 
     let transaction_store = Arc::new(TransactionStoreImpl::new());
     let solana_rpc = Arc::new(GrpcGeyserImpl::new(
-        env.grpc_url.clone().unwrap(),
+        env.grpc_url.clone().expect("GRPC_URL"),
         env.x_token.clone(),
     ));
     let rpc_client = Arc::new(RpcClient::new(env.rpc_url.unwrap()));
