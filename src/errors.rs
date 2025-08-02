@@ -20,7 +20,7 @@ impl Error for AtlasTxnSenderError {}
 impl std::fmt::Display for AtlasTxnSenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            AtlasTxnSenderError::Custom(msg) => write!(f, "{}", msg),
+            AtlasTxnSenderError::Custom(msg) => write!(f, "{msg}"),
         }
     }
 }

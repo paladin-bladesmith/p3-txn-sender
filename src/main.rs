@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
         .set_middleware(service_builder)
         .max_request_body_size(15_000_000)
         .max_connections(1_000_000)
-        .build(format!("0.0.0.0:{}", port))
+        .build(format!("0.0.0.0:{port}"))
         .await
         .unwrap();
     let tpu_connection_pool_size = env
