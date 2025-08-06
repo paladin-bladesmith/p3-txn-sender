@@ -17,6 +17,7 @@ use tracing::{error, warn};
 
 use crate::{
     leader_tracker::{LeaderTracker, LeaderTrackerTrait},
+    p3_client::P3Handler,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
 };
@@ -44,6 +45,7 @@ pub struct TxnSenderImpl {
     txn_sender_runtime: Arc<Runtime>,
     txn_send_retry_interval_seconds: usize,
     max_retry_queue_size: Option<usize>,
+    p3_handler: Option<Arc<P3Handler>>,
 }
 
 impl TxnSenderImpl {
@@ -55,6 +57,7 @@ impl TxnSenderImpl {
         txn_sender_threads: usize,
         txn_send_retry_interval_seconds: usize,
         max_retry_queue_size: Option<usize>,
+        p3_handler: Option<Arc<P3Handler>>,
     ) -> Self {
         let txn_sender_runtime = Builder::new_multi_thread()
             .worker_threads(txn_sender_threads)
@@ -72,6 +75,7 @@ impl TxnSenderImpl {
             txn_sender_runtime: Arc::new(txn_sender_runtime),
             txn_send_retry_interval_seconds,
             max_retry_queue_size,
+            p3_handler,
         };
         txn_sender.retry_transactions();
         txn_sender
@@ -85,6 +89,7 @@ impl TxnSenderImpl {
         let txn_send_retry_interval_seconds = self.txn_send_retry_interval_seconds;
         let max_retry_queue_size = self.max_retry_queue_size;
         let p3_port = self.p3_port;
+        let p3_handler = self.p3_handler.clone();
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
@@ -126,6 +131,28 @@ impl TxnSenderImpl {
                     }
                 }
                 for wire_transaction in wire_transactions.iter() {
+
+                    if let Some(p3_handler) = &p3_handler {
+                        let p3_handler = p3_handler.clone();
+                        let wire_transaction = wire_transaction.clone();
+                        let sent_at = Instant::now();
+                        
+                        txn_sender_runtime.spawn(async move {
+                            match p3_handler.send_transaction(&wire_transaction).await {
+                                Ok(()) => {
+                                    statsd_time!(
+                                        "transaction_received_by_p3",
+                                        sent_at.elapsed(), "api_key" => "not_applicable", "retry" => "true");
+                                    return;
+                                }
+                                Err(e) => {
+                                    error!("Failed to send retry transaction to P3: {}", e);
+                                    statsd_count!("p3_retry_send_error", 1);
+                                }
+                            }
+                        });
+                    }
+
                     let mut leader_num = 0;
                     for leader in leader_tracker.get_leaders() {
                         let connection_cache = connection_cache.clone();
@@ -287,6 +314,29 @@ impl TxnSender for TxnSenderImpl {
             .request_metadata
             .map(|m| m.api_key)
             .unwrap_or("none".to_string());
+
+        if let Some(p3_handler) = &self.p3_handler {
+            let p3_handler = p3_handler.clone();
+            let wire_transaction = transaction_data.wire_transaction.clone();
+            let api_key_p3 = api_key.clone();
+            let sent_at = transaction_data.sent_at;
+            
+            self.txn_sender_runtime.spawn(async move {
+                match p3_handler.send_transaction(&wire_transaction).await {
+                    Ok(()) => {
+                        statsd_time!(
+                            "transaction_received_by_p3",
+                            sent_at.elapsed(), "api_key" => &api_key_p3);
+                        return;
+                    }
+                    Err(e) => {
+                        error!("Failed to send transaction to P3: {}", e);
+                        statsd_count!("p3_send_error", 1, "api_key" => &api_key_p3);
+                    }
+                }
+            });
+        }
+
         let mut leader_num = 0;
         for leader in self.leader_tracker.get_leaders() {
             if leader.gossip.is_none() {
@@ -297,6 +347,7 @@ impl TxnSender for TxnSenderImpl {
             let wire_transaction = transaction_data.wire_transaction.clone();
             let api_key = api_key.clone();
             let p3_port = self.p3_port;
+            let sent_at = transaction_data.sent_at;
             self.txn_sender_runtime.spawn(async move {
                 let mut p3_addr = leader.gossip.unwrap();
                 p3_addr.set_port(p3_port);
@@ -320,7 +371,7 @@ impl TxnSender for TxnSenderImpl {
                             let leader_num_str = leader_num.to_string();
                             statsd_time!(
                                 "transaction_received_by_leader",
-                                transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false");
+                                sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false");
                             return;
                         }
                     } else {

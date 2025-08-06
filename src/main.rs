@@ -1,6 +1,7 @@
 mod errors;
 mod grpc_geyser;
 mod leader_tracker;
+mod p3_client;
 mod rpc_server;
 mod solana_rpc;
 mod static_leader;
@@ -44,6 +45,8 @@ struct AtlasTxnSenderEnv {
     max_txn_send_retries: Option<usize>,
     txn_send_retry_interval: Option<usize>,
     max_retry_queue_size: Option<usize>,
+    p3_addr: Option<String>,
+    p3_enabled: Option<bool>,
 }
 
 // Defualt on RPC is 4
@@ -120,6 +123,27 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let txn_send_retry_interval_seconds = env.txn_send_retry_interval.unwrap_or(2);
+    
+    let p3_handler = if env.p3_enabled.unwrap_or(false) {
+        if let Some(p3_addr_str) = env.p3_addr {
+            match p3_addr_str.parse() {
+                Ok(p3_addr) => {
+                    info!("P3 enabled, sending to: {}", p3_addr);
+                    Some(Arc::new(p3_client::P3Handler::new(p3_addr, connection_cache.clone())))
+                }
+                Err(e) => {
+                    error!("Invalid P3 address '{}': {}", p3_addr_str, e);
+                    None
+                }
+            }
+        } else {
+            error!("P3 enabled but no P3_ADDR provided");
+            None
+        }
+    } else {
+        None
+    };
+
     let txn_sender = Arc::new(TxnSenderImpl::new(
         leader_tracker,
         transaction_store.clone(),
@@ -128,6 +152,7 @@ async fn main() -> anyhow::Result<()> {
         env.txn_sender_threads.unwrap_or(4),
         txn_send_retry_interval_seconds,
         env.max_retry_queue_size,
+        p3_handler,
     ));
     let max_txn_send_retries = env.max_txn_send_retries.unwrap_or(5);
     let atlas_txn_sender =
