@@ -1,5 +1,5 @@
 {
-  "libpath": "/usr/local/lib/libyellowstone_grpc_geyser.so",
+  "libpath": "libyellowstone_grpc_geyser.dylib",
   "grpc": {
     "address": "0.0.0.0:10000",
     "compression": {
