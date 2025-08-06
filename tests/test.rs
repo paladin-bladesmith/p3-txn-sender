@@ -32,7 +32,27 @@ async fn test_send_transaction() {
     
     // Send to p3-txn-sender
     let client = reqwest::Client::new();
-    let response = client
+    // let response = client
+    //     .post("http://localhost:4040")
+    //     .json(&serde_json::json!({
+    //         "jsonrpc": "2.0",
+    //         "method": "sendTransaction",
+    //         "params": [
+    //             serialized,
+    //             {"skipPreflight": true, "encoding": "base64"},
+    //             null
+    //         ],
+    //         "id": 1
+    //     }))
+    //     .send()
+    //     .await
+    //     .unwrap();
+    
+    // let result: serde_json::Value = response.json().await.unwrap();
+    // println!("P3 response: {}", result);
+
+    for _ in 0..10 {
+        let response = client
         .post("http://localhost:4040")
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
@@ -50,72 +70,73 @@ async fn test_send_transaction() {
     
     let result: serde_json::Value = response.json().await.unwrap();
     println!("P3 response: {}", result);
-    
-    if let Some(success_result) = result.get("result") {
-        let tx_signature = success_result.as_str().unwrap();
-        println!("✅ Transaction signature: {}", tx_signature);
-        
-        // Try multiple commitment levels and wait times
-        for attempt in 1..=5 {
-            println!("🔍 Attempt {} - Checking transaction...", attempt);
-            
-            // Try different commitment levels
-            for commitment in ["processed", "confirmed", "finalized"] {
-                let tx_response = client
-                    .post("http://localhost:8899")
-                    .json(&serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "getTransaction",
-                        "params": [
-                            tx_signature,
-                            {
-                                "encoding": "json",
-                                "commitment": commitment,
-                                "maxSupportedTransactionVersion": 0
-                            }
-                        ],
-                        "id": 1
-                    }))
-                    .send()
-                    .await
-                    .unwrap();
-                    
-                let tx_details: serde_json::Value = tx_response.json().await.unwrap();
-                
-                if let Some(tx_data) = tx_details.get("result") {
-                    if !tx_data.is_null() {
-                        println!("✅ Found transaction with {} commitment!", commitment);
-                        println!("Transaction data: {}", serde_json::to_string_pretty(tx_data).unwrap());
-                        return;
-                    }
-                }
-            }
-            
-            // Also try to send the same transaction to regular RPC to compare
-            if attempt == 1 {
-                println!("🔄 Comparing with regular RPC...");
-                let rpc_response = client
-                    .post("http://localhost:8899")
-                    .json(&serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "sendTransaction",
-                        "params": [
-                            serialized,
-                            {"skipPreflight": true, "encoding": "base64"}
-                        ],
-                        "id": 1
-                    }))
-                    .send()
-                    .await
-                    .unwrap();
-                    
-                let rpc_result: serde_json::Value = rpc_response.json().await.unwrap();
-                println!("Regular RPC response: {}", rpc_result);
-            }
-            
-            sleep(Duration::from_secs(3)).await;
-        }
-        
-        println!("⚠️ Transaction not found after 5 attempts");
     }
+    
+    // if let Some(success_result) = result.get("result") {
+    //     let tx_signature = success_result.as_str().unwrap();
+    //     println!("✅ Transaction signature: {}", tx_signature);
+        
+    //     // Try multiple commitment levels and wait times
+    //     for attempt in 1..=5 {
+    //         println!("🔍 Attempt {} - Checking transaction...", attempt);
+            
+    //         // Try different commitment levels
+    //         for commitment in ["processed", "confirmed", "finalized"] {
+    //             let tx_response = client
+    //                 .post("http://localhost:8899")
+    //                 .json(&serde_json::json!({
+    //                     "jsonrpc": "2.0",
+    //                     "method": "getTransaction",
+    //                     "params": [
+    //                         tx_signature,
+    //                         {
+    //                             "encoding": "json",
+    //                             "commitment": commitment,
+    //                             "maxSupportedTransactionVersion": 0
+    //                         }
+    //                     ],
+    //                     "id": 1
+    //                 }))
+    //                 .send()
+    //                 .await
+    //                 .unwrap();
+                    
+    //             let tx_details: serde_json::Value = tx_response.json().await.unwrap();
+                
+    //             if let Some(tx_data) = tx_details.get("result") {
+    //                 if !tx_data.is_null() {
+    //                     println!("✅ Found transaction with {} commitment!", commitment);
+    //                     println!("Transaction data: {}", serde_json::to_string_pretty(tx_data).unwrap());
+    //                     return;
+    //                 }
+    //             }
+    //         }
+            
+    //         // Also try to send the same transaction to regular RPC to compare
+    //         // if attempt == 1 {
+    //         //     println!("🔄 Comparing with regular RPC...");
+    //         //     let rpc_response = client
+    //         //         .post("http://localhost:8899")
+    //         //         .json(&serde_json::json!({
+    //         //             "jsonrpc": "2.0",
+    //         //             "method": "sendTransaction",
+    //         //             "params": [
+    //         //                 serialized,
+    //         //                 {"skipPreflight": true, "encoding": "base64"}
+    //         //             ],
+    //         //             "id": 1
+    //         //         }))
+    //         //         .send()
+    //         //         .await
+    //         //         .unwrap();
+                    
+    //         //     let rpc_result: serde_json::Value = rpc_response.json().await.unwrap();
+    //         //     println!("Regular RPC response: {}", rpc_result);
+    //         // }
+            
+    //         sleep(Duration::from_secs(3)).await;
+    //     }
+        
+    //     println!("⚠️ Transaction not found after 5 attempts");
+    // }
 }

@@ -222,6 +222,9 @@ impl TxnSender for TxnSenderImpl {
                 for i in 0..SEND_TXN_RETRIES {
                     let conn =
                         connection_cache.get_nonblocking_connection(&p3_addr);
+                        let e = conn.server_addr();
+                        error!("___{:?}", e);
+
                     if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data(&wire_transaction)).await {
                             if let Err(e) = result {
                                 if i == SEND_TXN_RETRIES-1 {
