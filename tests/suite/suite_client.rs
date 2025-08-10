@@ -16,10 +16,11 @@ impl SuiteClient {
         }
     }
 
-    pub async fn send_transaction(&self, tx: Transaction) -> Response {
+    pub async fn send_transaction(&self, tx: Transaction) -> String {
         let serialized = base64::encode(bincode::serialize(&tx).unwrap());
 
-        self._client
+        let res = self
+            ._client
             .post(&self.client_url)
             .json(&serde_json::json!({
                 "jsonrpc": "2.0",
@@ -33,6 +34,15 @@ impl SuiteClient {
             }))
             .send()
             .await
-            .unwrap()
+            .unwrap();
+
+        let result = res.json::<serde_json::Value>().await.unwrap();
+        if let Some(success_result) = result.get("result") {
+            let tx_signature = success_result.as_str().unwrap().to_string();
+            println!("✅ Transaction signature: {}", tx_signature);
+            tx_signature
+        } else {
+            panic!("TX failed: {}", result.to_string())
+        }
     }
 }

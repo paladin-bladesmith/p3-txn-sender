@@ -1,8 +1,20 @@
+use std::{str::FromStr, time::Duration};
+
+use reqwest::Client;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
-    compute_budget, instruction::Instruction, message::Message, pubkey::Pubkey, signature::Keypair,
-    sysvar::instructions::Instructions, transaction::Transaction,
+    compute_budget,
+    instruction::Instruction,
+    message::Message,
+    pubkey::Pubkey,
+    signature::{Keypair, Signature},
+    signer::Signer,
+    sysvar::instructions::Instructions,
+    transaction::Transaction,
 };
+use solana_transaction_status::UiTransactionEncoding;
+use tokio::time::sleep;
+use tracing::info;
 
 use crate::suite::suite_client::SuiteClient;
 
@@ -30,8 +42,12 @@ pub struct TestSuite {
     pub mev_client: SuiteClient,
     pub validator_keypair: Keypair,
     pub testers: [Keypair; 3],
+    base_url: String,
+    ports: SuitePorts,
 }
 
+pub const VALIDATOR_PUBKEY: Pubkey =
+    Pubkey::from_str_const("3wWrxQNpmGRzaVYVCCGEVLV6GMHG4Vvzza4iT79atw5A");
 pub const TESTER1_PUBKEY: Pubkey =
     Pubkey::from_str_const("7gt41ih9Q3CBB6gUwj2xQFBEd72MNSFMBFv8rHhrYr9E");
 pub const TESTER2_PUBKEY: Pubkey =
@@ -41,7 +57,7 @@ pub const TESTER3_PUBKEY: Pubkey =
 
 impl TestSuite {
     /// Creates new suite for local testing
-    pub fn new_local(ports: SuitePorts) -> Self {
+    pub async fn new_local(ports: SuitePorts) -> Self {
         let url = "http://127.0.0.1";
         let rpc_client = solana_client::nonblocking::rpc_client::RpcClient::new(format!(
             "{}:{}",
@@ -73,13 +89,55 @@ impl TestSuite {
             mev_client,
             validator_keypair,
             testers: [tester1_keypair, tester2_keypair, tester3_keypair],
+            base_url: url.to_string(),
+            ports,
         }
+        .check_setup()
+        .await
     }
 
     /// TODO: Make sure our setup is ready.
     /// Checks if clients are up and running, and all keypairs have some balance for tests
-    pub async fn check_setup(self) -> Self {
+    async fn check_setup(self) -> Self {
+        // Confirm our validator RPC is running
         self.rpc_client.get_health().await.unwrap();
+
+        // Confirm our sender is running
+        let client = Client::new();
+        let res = client
+            .post(&format!("{}:{}", self.base_url, self.ports.sender))
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "health",
+                "params": null,
+                "id": 1
+            }))
+            .send()
+            .await
+            .unwrap()
+            .status();
+        assert!(res.is_success(), "Sender is not running");
+
+        // Confirm we have SOL for all our keypairs (validator and 3 testers)
+        // Helper function to airdrop incase balance is 0
+        let validate_balance = async |key: &Pubkey| {
+            let bal = self.get_balance(key).await;
+
+            // airdrop if balance is 0
+            if bal <= 1_000_000_000 {
+                println!("Balance is low for {}", key);
+                let sig = self.request_airdrop(key, 2_000_000_000_000).await;
+
+                // Confirm airdrop finalized
+                self.get_transaction(sig).await;
+            }
+        };
+
+        validate_balance(&self.validator_keypair.pubkey()).await;
+        validate_balance(&self.testers[0].pubkey()).await;
+        validate_balance(&self.testers[1].pubkey()).await;
+        validate_balance(&self.testers[2].pubkey()).await;
+
         self
     }
 
@@ -108,5 +166,44 @@ impl TestSuite {
 
     pub async fn get_latest_blockhash(&self) -> solana_sdk::hash::Hash {
         self.rpc_client.get_latest_blockhash().await.unwrap()
+    }
+
+    pub async fn get_balance(&self, key: &Pubkey) -> u64 {
+        self.rpc_client.get_balance(key).await.unwrap()
+    }
+
+    pub async fn request_airdrop(&self, key: &Pubkey, amount: u64) -> String {
+        self.rpc_client
+            .request_airdrop(key, amount)
+            .await
+            .unwrap()
+            .to_string()
+    }
+
+    pub async fn get_transaction(&self, sig: String) -> (u64, u64) {
+        let sig = Signature::from_str(&sig).unwrap();
+
+        println!("🕐 Attemping to get transaction");
+        let mut result = None;
+        for _ in 0..10 {
+            match self
+                .rpc_client
+                .get_transaction(&sig, UiTransactionEncoding::Json)
+                .await
+            {
+                Ok(res) => {
+                    result = Some(res);
+                    break;
+                }
+                Err(_) => sleep(Duration::from_secs(3)).await,
+            }
+        }
+
+        if let Some(result) = result {
+            let res = result.transaction.meta.unwrap();
+            (res.fee, res.compute_units_consumed.unwrap_or(0))
+        } else {
+            panic!("❌ Failed getting the transaction");
+        }
     }
 }
