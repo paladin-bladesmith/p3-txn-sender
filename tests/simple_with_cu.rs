@@ -1,4 +1,4 @@
-use solana_sdk::{signer::Signer, system_instruction, system_transaction};
+use solana_sdk::{signer::Signer, system_instruction};
 
 use crate::suite::{SuitePorts, TestSuite, TESTER1_PUBKEY, TESTER2_PUBKEY};
 

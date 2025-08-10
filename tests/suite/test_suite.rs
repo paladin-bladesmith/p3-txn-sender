@@ -9,12 +9,10 @@ use solana_sdk::{
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
-    sysvar::instructions::Instructions,
     transaction::Transaction,
 };
 use solana_transaction_status::UiTransactionEncoding;
 use tokio::time::sleep;
-use tracing::info;
 
 use crate::suite::suite_client::SuiteClient;
 
@@ -96,7 +94,7 @@ impl TestSuite {
         .await
     }
 
-    /// TODO: Make sure our setup is ready.
+    /// Make sure our setup is ready.
     /// Checks if clients are up and running, and all keypairs have some balance for tests
     async fn check_setup(self) -> Self {
         // Confirm our validator RPC is running

@@ -1,4 +1,4 @@
-use reqwest::{Client, Response};
+use reqwest::Client;
 use solana_sdk::transaction::Transaction;
 
 pub struct SuiteClient {

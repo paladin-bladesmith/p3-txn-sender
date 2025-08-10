@@ -43,6 +43,8 @@ We are using gRPC and because of that we need geyser enabled, currently `/etc` i
 ./target/debug/solana-test-validator --geyser-plugin-config {path/to/p3-txn-sender}/etc/yellowstone-geyser.json
 ```
 
+* NOTE - sometimes the test-validator state might get corrputed because of stopping the validator mid way, it is safe to clean the state (delete `test-ledger`) and try to run the validator again, this might fix some weird behaviors.
+
 ## Run p3-txn-sender
 
 After you successfully started the test validator, you need to start p3-txn-sender in a separate process.
