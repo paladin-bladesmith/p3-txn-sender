@@ -18,12 +18,47 @@ use crate::{
     vendor::solana_rpc::decode_and_deserialize,
 };
 
+#[repr(u16)]
+#[derive(Deserialize, Clone, Debug)]
+pub enum SendPorts {
+    P3 = 4819,
+    MEV = 4820,
+}
+
+// jsonrpsee does not make it easy to access http data,
+// so creating this optional param to pass in metadata
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+pub struct OptionalRequestMetadata {
+    pub api_key: Option<String>,
+    pub send_port: Option<SendPorts>,
+}
+
+impl OptionalRequestMetadata {
+    pub fn unwrap_or_default(self) -> RequestMetadata {
+        let api_key = self.api_key.unwrap_or("none".to_string());
+        let send_port = self.send_port.unwrap_or(SendPorts::P3) as u16;
+
+        RequestMetadata { api_key, send_port }
+    }
+}
+
 // jsonrpsee does not make it easy to access http data,
 // so creating this optional param to pass in metadata
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 pub struct RequestMetadata {
     pub api_key: String,
+    pub send_port: u16,
+}
+
+impl Default for RequestMetadata {
+    fn default() -> Self {
+        Self {
+            api_key: "none".to_string(),
+            send_port: SendPorts::P3 as u16,
+        }
+    }
 }
 
 #[rpc(server)]
@@ -35,7 +70,7 @@ pub trait AtlasTxnSender {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
-        request_metadata: Option<RequestMetadata>,
+        request_metadata: Option<OptionalRequestMetadata>,
     ) -> RpcResult<String>;
 }
 
@@ -68,13 +103,13 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
-        request_metadata: Option<RequestMetadata>,
+        request_metadata: Option<OptionalRequestMetadata>,
     ) -> RpcResult<String> {
         let sent_at = Instant::now();
-        let api_key = request_metadata
-            .clone()
-            .map(|m| m.api_key)
-            .unwrap_or("none".to_string());
+        let request_metadata = request_metadata
+            .map(|m| m.unwrap_or_default())
+            .unwrap_or_default();
+        let RequestMetadata { api_key, .. } = request_metadata.clone();
         statsd_count!("send_transaction", 1, "api_key" => &api_key);
         validate_send_transaction_params(&params)?;
         let start = Instant::now();
