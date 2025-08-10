@@ -22,7 +22,7 @@ use crate::{
 #[derive(Deserialize, Clone, Debug)]
 pub enum SendPorts {
     P3 = 4819,
-    MEV = 4820,
+    Mev = 4820,
 }
 
 // jsonrpsee does not make it easy to access http data,

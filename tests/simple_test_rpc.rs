@@ -20,7 +20,7 @@ async fn simple_transfer() {
 
     let serialized = base64::encode(bincode::serialize(&transaction).unwrap());
     println!("Serialized transaction: {}", serialized);
-    
+
     let client = reqwest::Client::new();
     let rpc_response = client
         .post("http://localhost:8899")

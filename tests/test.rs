@@ -4,7 +4,7 @@ use reqwest::Client;
 use solana_sdk::{compute_budget, signature::Signer, system_instruction};
 use tokio::time::{sleep, Duration};
 
-use crate::suite::{SuitePorts, TestSuite, TESTER1_PUBKEY, TESTER2_PUBKEY};
+use crate::suite::{SuitePorts, TestSuite, TESTER1_PUBKEY};
 
 #[tokio::test]
 async fn test_send_transaction() {
@@ -24,15 +24,15 @@ async fn test_send_transaction() {
         .await;
 
     // or we can do
-    let ix3 = system_instruction::transfer(&TESTER2_PUBKEY, &TESTER1_PUBKEY, lamports);
-    let tx2 = suite
-        .build_tx_with_cu_price(
-            vec![ix3],
-            &[suite.testers[1].insecure_clone()],
-            Some(&suite.testers[1].pubkey()),
-            50_000,
-        )
-        .await;
+    // let ix3 = system_instruction::transfer(&TESTER2_PUBKEY, &TESTER1_PUBKEY, lamports);
+    // let tx2 = suite
+    //     .build_tx_with_cu_price(
+    //         vec![ix3],
+    //         &[suite.testers[1].insecure_clone()],
+    //         Some(&suite.testers[1].pubkey()),
+    //         50_000,
+    //     )
+    //     .await;
 
     // Send to p3-txn-sender
     let response = suite.p3_client.send_transaction(tx1).await;
@@ -80,28 +80,6 @@ async fn test_send_transaction() {
                     return;
                 }
             }
-
-            // // Also try to send the same transaction to regular RPC to compare
-            // if attempt == 4 {
-            //     println!("🔄 Comparing with regular RPC...");
-            // let rpc_response = client
-            //     .post("http://localhost:8899")
-            //     .json(&serde_json::json!({
-            //         "jsonrpc": "2.0",
-            //         "method": "sendTransaction",
-            //         "params": [
-            //             serialized,
-            //             {"skipPreflight": true, "encoding": "base64"}
-            //         ],
-            //         "id": 1
-            //     }))
-            //     .send()
-            //     .await
-            //     .unwrap();
-
-            //     let rpc_result: serde_json::Value = rpc_response.json().await.unwrap();
-            //     println!("Regular RPC response: {}", rpc_result);
-            // }
 
             sleep(Duration::from_secs(3)).await;
         }

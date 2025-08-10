@@ -76,8 +76,8 @@ impl TestSuite {
         }
     }
 
-    /// Make sure our setup is ready.
-    /// Checks if clients are up and running, and all keypairs have some balance
+    /// TODO: Make sure our setup is ready.
+    /// Checks if clients are up and running, and all keypairs have some balance for tests
     pub async fn check_setup(self) -> Self {
         self.rpc_client.get_health().await.unwrap();
         self
