@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::rpc_server::RequestMetadata;
-use cadence_macros::{statsd_time};
+use cadence_macros::statsd_time;
 use dashmap::DashMap;
 use solana_sdk::transaction::VersionedTransaction;
 use tracing::error;
@@ -19,7 +19,6 @@ pub struct TransactionData {
 
 pub trait TransactionStore: Send + Sync {
     fn add_transaction(&self, transaction: TransactionData);
-    fn get_signatures(&self) -> Vec<String>;
     fn remove_transaction(&self, signature: String) -> Option<TransactionData>;
     fn get_transactions(&self) -> Arc<DashMap<String, TransactionData>>;
     fn has_signature(&self, signature: &str) -> bool;
@@ -31,7 +30,6 @@ pub struct TransactionStoreImpl {
 
 impl TransactionStoreImpl {
     pub fn new() -> Self {
-        
         Self {
             transactions: Arc::new(DashMap::new()),
         }
@@ -54,16 +52,6 @@ impl TransactionStore for TransactionStoreImpl {
         }
         statsd_time!("add_signature_time", start.elapsed());
     }
-    fn get_signatures(&self) -> Vec<String> {
-        let start = Instant::now();
-        let signatures = self
-            .transactions
-            .iter()
-            .map(|t| get_signature(&t).unwrap())
-            .collect();
-        statsd_time!("get_signatures_time", start.elapsed());
-        signatures
-    }
     fn remove_transaction(&self, signature: String) -> Option<TransactionData> {
         let start = Instant::now();
         let transaction = self.transactions.remove(&signature);
@@ -78,6 +66,7 @@ impl TransactionStore for TransactionStoreImpl {
 pub fn get_signature(transaction: &TransactionData) -> Option<String> {
     transaction
         .versioned_transaction
-        .signatures.first()
+        .signatures
+        .first()
         .map(|s| s.to_string())
 }

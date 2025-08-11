@@ -23,6 +23,11 @@ impl StaticLeaderImpl {
             version: None,
             feature_set: None,
             shred_version: None,
+            tvu: None,
+            tpu_forwards: None,
+            tpu_forwards_quic: None,
+            tpu_vote: None,
+            serve_repair: None,
         };
         Self { static_leader }
     }
