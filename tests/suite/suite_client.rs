@@ -1,5 +1,8 @@
+use std::{future::IntoFuture, time::Duration};
+
 use reqwest::Client;
 use solana_sdk::transaction::Transaction;
+use tokio::time::sleep;
 
 pub struct SuiteClient {
     _client: Client,
@@ -16,33 +19,72 @@ impl SuiteClient {
         }
     }
 
+    /// Sends single transaction to this port
     pub async fn send_transaction(&self, tx: Transaction) -> String {
-        let serialized = base64::encode(bincode::serialize(&tx).unwrap());
+        send_transaction(
+            self._client.clone(),
+            self.client_url.clone(),
+            self.send_port.to_string(),
+            tx,
+        )
+        .await
+    }
 
-        let res = self
-            ._client
-            .post(&self.client_url)
-            .json(&serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "sendTransaction",
-                "params": [
-                    serialized,
-                    {"skipPreflight": true, "encoding": "base64"},
-                    {"send_port": self.send_port.to_string()},
-                ],
-                "id": 1
-            }))
-            .send()
-            .await
-            .unwrap();
+    /// Sends multiple transactions to the same port with a small delay
+    pub async fn send_multiple_transactions(&self, txs: &[Transaction]) -> Vec<String> {
+        let mut handles = Vec::with_capacity(txs.len());
+        let port = self.send_port.to_string();
 
-        let result = res.json::<serde_json::Value>().await.unwrap();
-        if let Some(success_result) = result.get("result") {
-            let tx_signature = success_result.as_str().unwrap().to_string();
-            println!("✅ Transaction signature: {}", tx_signature);
-            tx_signature
-        } else {
-            panic!("TX failed: {}", result.to_string())
+        for tx in txs {
+            handles.push(tokio::spawn(send_transaction(
+                self._client.clone(),
+                self.client_url.clone(),
+                port.clone(),
+                tx.clone(),
+            )));
+            sleep(Duration::from_millis(1)).await;
         }
+
+        let mut results = Vec::with_capacity(handles.len());
+        for handle in handles {
+            results.push(handle.await.unwrap())
+        }
+
+        results
+    }
+}
+
+/// Helper function
+async fn send_transaction(
+    client: Client,
+    client_url: String,
+    port: String,
+    tx: Transaction,
+) -> String {
+    let serialized = base64::encode(bincode::serialize(&tx).unwrap());
+
+    let res = client
+        .post(client_url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "sendTransaction",
+            "params": [
+                serialized,
+                {"skipPreflight": true, "encoding": "base64"},
+                {"send_port": port},
+            ],
+            "id": 1
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let result = res.json::<serde_json::Value>().await.unwrap();
+    if let Some(success_result) = result.get("result") {
+        let tx_signature = success_result.as_str().unwrap().to_string();
+        println!("✅ Transaction signature: {}", tx_signature);
+        tx_signature
+    } else {
+        panic!("TX failed: {}", result.to_string())
     }
 }
