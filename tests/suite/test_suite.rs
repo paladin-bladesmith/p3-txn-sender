@@ -26,10 +26,10 @@ pub const TESTER3_PUBKEY: Pubkey =
     Pubkey::from_str_const("9Hcmomr84nehtwEj13KDNfbSLSeNSvzKtEAw3HCMyccr");
 
 pub struct SuitePorts {
-    rpc: u16,
-    sender: u16,
-    p3: u16,
-    mev: u16,
+    pub rpc: u16,
+    pub sender: u16,
+    pub p3: u16,
+    pub mev: u16,
 }
 
 impl Default for SuitePorts {
@@ -39,6 +39,16 @@ impl Default for SuitePorts {
             sender: 4040,
             p3: 4819,
             mev: 4820,
+        }
+    }
+}
+
+impl SuitePorts {
+    pub fn standalone() -> Self {
+        Self {
+            p3: 4821,
+            mev: 4822,
+            ..Default::default()
         }
     }
 }

@@ -12,7 +12,7 @@ mod suite;
 #[tokio::test]
 async fn test_multiple_txs() {
     // Generate our test suite
-    let suite = TestSuite::new_local(SuitePorts::default()).await;
+    let suite = TestSuite::new_local(SuitePorts::standalone()).await;
 
     // transfer amount
     let transfer_amount = 1000;

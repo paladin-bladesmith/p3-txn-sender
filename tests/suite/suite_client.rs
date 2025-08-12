@@ -24,7 +24,7 @@ impl SuiteClient {
         send_transaction(
             self._client.clone(),
             self.client_url.clone(),
-            self.send_port.to_string(),
+            self.send_port,
             tx,
             0,
         )
@@ -34,13 +34,12 @@ impl SuiteClient {
     /// Sends multiple transactions to the same port with a small delay
     pub async fn send_multiple_transactions(&self, txs: &[Transaction]) -> Vec<String> {
         let mut handles = Vec::with_capacity(txs.len());
-        let port = self.send_port.to_string();
 
         for (i, tx) in txs.iter().enumerate() {
             handles.push(tokio::spawn(send_transaction(
                 self._client.clone(),
                 self.client_url.clone(),
-                port.clone(),
+                self.send_port.clone(),
                 tx.clone(),
                 i as u8,
             )));
@@ -59,7 +58,7 @@ impl SuiteClient {
 async fn send_transaction(
     client: Client,
     client_url: String,
-    port: String,
+    port: u16,
     tx: Transaction,
     id: u8,
 ) -> String {
@@ -73,7 +72,7 @@ async fn send_transaction(
             "params": [
                 serialized,
                 {"skipPreflight": true, "encoding": "base64"},
-                {"send_port": port},
+                {"sendPort": port},
             ],
             "id": 1
         }))

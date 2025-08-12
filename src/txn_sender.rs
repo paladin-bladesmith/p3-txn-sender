@@ -122,6 +122,7 @@ impl TxnSenderImpl {
                         let sent_at = Instant::now();
                         let leader = Arc::new(leader.clone());
                         let mut socket_addr = leader.gossip.unwrap();
+                        info!("p3 port is: {}", send_port);
                         socket_addr.set_port(*send_port);
                         let wire_transaction = wire_transaction.clone();
                         txn_sender_runtime.spawn(async move {
@@ -209,6 +210,7 @@ impl TxnSender for TxnSenderImpl {
             self.txn_sender_runtime.spawn(async move {
                 let mut socket_addr = leader.gossip.unwrap();
                 socket_addr.set_port(send_port);
+                info!("p3 port send is: {}", send_port);
 
                 for i in 0..SEND_TXN_RETRIES {
                     let conn =

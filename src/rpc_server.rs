@@ -6,7 +6,7 @@ use jsonrpsee::{
     proc_macros::rpc,
     types::ErrorObjectOwned,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use solana_rpc_client_api::config::RpcSendTransactionConfig;
 use solana_sdk::transaction::VersionedTransaction;
 use solana_transaction_status::UiTransactionEncoding;
@@ -19,10 +19,33 @@ use crate::{
 };
 
 #[repr(u16)]
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
+#[serde(into = "u16", from = "u16")]
 pub enum SendPorts {
     P3 = 4819,
     Mev = 4820,
+
+    // Standalone ports to avoid conflicts
+    P3S = 4821,
+    MevS = 4822,
+}
+
+impl From<SendPorts> for u16 {
+    fn from(port: SendPorts) -> u16 {
+        port as u16
+    }
+}
+
+impl From<u16> for SendPorts {
+    fn from(value: u16) -> Self {
+        match value {
+            4819 => SendPorts::P3,
+            4820 => SendPorts::Mev,
+            4821 => SendPorts::P3S,
+            4822 => SendPorts::MevS,
+            _ => panic!("Invalid port value: {}", value),
+        }
+    }
 }
 
 // jsonrpsee does not make it easy to access http data,
