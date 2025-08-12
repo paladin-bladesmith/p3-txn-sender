@@ -25,7 +25,7 @@ async fn test_simple() {
 
     // Set and confirm TX
     let sig = suite.p3_client.send_transaction(tx).await;
-    let (fee, _) = suite.get_transaction(sig).await;
+    let result = suite.get_transaction(&sig).await;
 
     // Updated balances
     let balance_tester1 = suite.get_balance(&TESTER1_PUBKEY).await;
@@ -33,7 +33,7 @@ async fn test_simple() {
 
     // Assert balances are correct
     assert_eq!(
-        before_balance_tester1 - fee - transfer_amount,
+        before_balance_tester1 - result.fee - transfer_amount,
         balance_tester1
     );
     assert_eq!(before_balance_tester2 + transfer_amount, balance_tester2);

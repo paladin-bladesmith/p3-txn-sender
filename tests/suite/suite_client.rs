@@ -26,6 +26,7 @@ impl SuiteClient {
             self.client_url.clone(),
             self.send_port.to_string(),
             tx,
+            0,
         )
         .await
     }
@@ -35,14 +36,14 @@ impl SuiteClient {
         let mut handles = Vec::with_capacity(txs.len());
         let port = self.send_port.to_string();
 
-        for tx in txs {
+        for (i, tx) in txs.iter().enumerate() {
             handles.push(tokio::spawn(send_transaction(
                 self._client.clone(),
                 self.client_url.clone(),
                 port.clone(),
                 tx.clone(),
+                i as u8,
             )));
-            sleep(Duration::from_millis(1)).await;
         }
 
         let mut results = Vec::with_capacity(handles.len());
@@ -60,6 +61,7 @@ async fn send_transaction(
     client_url: String,
     port: String,
     tx: Transaction,
+    id: u8,
 ) -> String {
     let serialized = base64::encode(bincode::serialize(&tx).unwrap());
 
@@ -82,7 +84,7 @@ async fn send_transaction(
     let result = res.json::<serde_json::Value>().await.unwrap();
     if let Some(success_result) = result.get("result") {
         let tx_signature = success_result.as_str().unwrap().to_string();
-        println!("✅ Transaction signature: {}", tx_signature);
+        println!("✅ Transaction id {}, signature: {}", id, tx_signature);
         tx_signature
     } else {
         panic!("TX failed: {}", result.to_string())

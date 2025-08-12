@@ -67,7 +67,7 @@ async fn test_multiple_txs() {
 
     // Send TXs with small delay between them
     let results = suite
-        .p3_client
+        .mev_client
         .send_multiple_transactions(&[tx1, tx2, tx3])
         .await;
     let sig1 = results[0].clone();

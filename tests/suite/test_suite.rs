@@ -16,6 +16,15 @@ use tokio::time::sleep;
 
 use crate::suite::suite_client::SuiteClient;
 
+pub const VALIDATOR_PUBKEY: Pubkey =
+    Pubkey::from_str_const("3wWrxQNpmGRzaVYVCCGEVLV6GMHG4Vvzza4iT79atw5A");
+pub const TESTER1_PUBKEY: Pubkey =
+    Pubkey::from_str_const("7gt41ih9Q3CBB6gUwj2xQFBEd72MNSFMBFv8rHhrYr9E");
+pub const TESTER2_PUBKEY: Pubkey =
+    Pubkey::from_str_const("2YmebjD5Y2fTDBrF4s4DoNPFyKMJLV6ftYzUXuibrU4h");
+pub const TESTER3_PUBKEY: Pubkey =
+    Pubkey::from_str_const("9Hcmomr84nehtwEj13KDNfbSLSeNSvzKtEAw3HCMyccr");
+
 pub struct SuitePorts {
     rpc: u16,
     sender: u16,
@@ -34,6 +43,12 @@ impl Default for SuitePorts {
     }
 }
 
+pub struct TxResponse {
+    pub fee: u64,
+    pub cu_consumed: u64,
+    pub slot: u64,
+}
+
 pub struct TestSuite {
     pub rpc_client: RpcClient,
     pub p3_client: SuiteClient,
@@ -43,15 +58,6 @@ pub struct TestSuite {
     base_url: String,
     ports: SuitePorts,
 }
-
-pub const VALIDATOR_PUBKEY: Pubkey =
-    Pubkey::from_str_const("3wWrxQNpmGRzaVYVCCGEVLV6GMHG4Vvzza4iT79atw5A");
-pub const TESTER1_PUBKEY: Pubkey =
-    Pubkey::from_str_const("7gt41ih9Q3CBB6gUwj2xQFBEd72MNSFMBFv8rHhrYr9E");
-pub const TESTER2_PUBKEY: Pubkey =
-    Pubkey::from_str_const("2YmebjD5Y2fTDBrF4s4DoNPFyKMJLV6ftYzUXuibrU4h");
-pub const TESTER3_PUBKEY: Pubkey =
-    Pubkey::from_str_const("9Hcmomr84nehtwEj13KDNfbSLSeNSvzKtEAw3HCMyccr");
 
 impl TestSuite {
     /// Creates new suite for local testing
@@ -127,7 +133,7 @@ impl TestSuite {
                 let sig = self.request_airdrop(key, 2_000_000_000_000).await;
 
                 // Confirm airdrop finalized
-                self.get_transaction(sig).await;
+                self.get_transaction(&sig).await;
             }
         };
 
@@ -141,10 +147,14 @@ impl TestSuite {
 
     pub async fn build_tx(
         &self,
-        ixs: Vec<Instruction>,
+        mut ixs: Vec<Instruction>,
         from: &[Keypair],
         payer: Option<&Pubkey>,
     ) -> Transaction {
+        // Set cu limit because of unknown bug
+        let cu_limit_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+        ixs.insert(0, cu_limit_ix);
+
         let message = Message::new(&ixs, payer);
         Transaction::new(from, message, self.get_latest_blockhash().await)
     }
@@ -156,8 +166,15 @@ impl TestSuite {
         payer: Option<&Pubkey>,
         cu_price: u64,
     ) -> Transaction {
-        let cu_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
-        ixs.insert(0, cu_ix);
+        if cu_price > 0 {
+            let cu_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+            ixs.insert(0, cu_ix);
+        }
+
+        // We need to set limit because of some unknown "maybe bug" in the ordering of TXs without it
+        let cu_limit_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+        ixs.insert(0, cu_limit_ix);
+
         let message = Message::new(&ixs, payer);
         Transaction::new(from, message, self.get_latest_blockhash().await)
     }
@@ -170,6 +187,7 @@ impl TestSuite {
         self.rpc_client.get_balance(key).await.unwrap()
     }
 
+    /// airdrop some SOL to address
     pub async fn request_airdrop(&self, key: &Pubkey, amount: u64) -> String {
         self.rpc_client
             .request_airdrop(key, amount)
@@ -178,8 +196,10 @@ impl TestSuite {
             .to_string()
     }
 
-    pub async fn get_transaction(&self, sig: String) -> (u64, u64) {
-        let sig = Signature::from_str(&sig).unwrap();
+    /// Rpc query the transaction
+    /// returns (fee paid, cu consumed)
+    pub async fn get_transaction(&self, sig: &str) -> TxResponse {
+        let sig = Signature::from_str(sig).unwrap();
 
         println!("🕐 Attemping to get transaction");
         let mut result = None;
@@ -199,9 +219,21 @@ impl TestSuite {
 
         if let Some(result) = result {
             let res = result.transaction.meta.unwrap();
-            (res.fee, res.compute_units_consumed.unwrap_or(0))
+
+            TxResponse {
+                fee: res.fee,
+                cu_consumed: res.compute_units_consumed.unwrap_or(0),
+                slot: result.slot,
+            }
         } else {
             panic!("❌ Failed getting the transaction");
         }
+    }
+
+    pub async fn get_block_transactions(
+        &self,
+        slot: u64,
+    ) -> Vec<solana_transaction_status::EncodedTransactionWithStatusMeta> {
+        self.rpc_client.get_block(slot).await.unwrap().transactions
     }
 }

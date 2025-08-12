@@ -9,6 +9,7 @@ Before we can send TXs to p3 ports, we need to stake PAL, currently we don't hav
 The easiest way of doing so would be to update the `update_staked_nodes` function (search in files, in `p3-quic/src/lib.rs`).
 
 You can add the next code snippet before the first return:
+
 ```rust
 let mut stakes: HashMap<Pubkey, u64> = HashMap::new();
 
@@ -25,7 +26,18 @@ let stakes = Arc::new(stakes);
     StakedNodes::new(stakes.clone(), HashMap::default());
 ```
 
-* In case you change the validator keypair, make sure to change the first pubkey here as well.
+- In case you change the validator keypair, make sure to change the first pubkey here as well.
+
+## Adjust limits
+
+In quic server we some limits that want to adjust to not get rate limited, specifically in `p3-quic/src/lib.rs`.
+
+we want to adjust all `QuicServerParams` and add those values:
+
+```rust
+max_connections_per_ipaddr_per_min: 999999,
+max_connections_per_peer: 999999,
+```
 
 ## Build test validator
 
@@ -37,13 +49,13 @@ cargo build --bin solana-test-validator
 
 ## Run test validator
 
-We are using gRPC and because of that we need geyser enabled, currently `/etc` includes the macOS version and it successfully runs on macOS, you might need to change the config file with the lib path. 
+We are using gRPC and because of that we need geyser enabled, currently `/etc` includes the macOS version and it successfully runs on macOS, you might need to change the config file with the lib path.
 
 ```bash
 ./target/debug/solana-test-validator --geyser-plugin-config {path/to/p3-txn-sender}/etc/yellowstone-geyser.json
 ```
 
-* NOTE - sometimes the test-validator state might get corrputed because of stopping the validator mid way, it is safe to clean the state (delete `test-ledger`) and try to run the validator again, this might fix some weird behaviors.
+- NOTE - sometimes the test-validator state might get corrputed because of stopping the validator mid way, it is safe to clean the state (delete `test-ledger`) and try to run the validator again, this might fix some weird behaviors.
 
 ## Run p3-txn-sender
 
@@ -53,7 +65,7 @@ After you successfully started the test validator, you need to start p3-txn-send
 ./scripts/run.sh
 ```
 
-* The script should include the default environment variables, but if for some reason those are not the same for you, you will need to modify them.
+- The script should include the default environment variables, but if for some reason those are not the same for you, you will need to modify them.
 
 ## Run tests
 
@@ -61,4 +73,24 @@ To confirm everything is up and running smoothly, you can try to run the simple 
 
 ```bash
 cargo test --test simple -- --nocapture
+```
+
+# Logging in test-validator
+
+Sometimes there are stuff we want to tests which are only possible using logging in test-validator
+
+Will include all useful loggings that can help us debugging
+
+## Received TXs
+
+1 example to it is testing the order in which our TXs are being received (NOT consumed but received).
+
+In `core/src/banking_stake/immutable_deserialized_packet.rs` the `ImmutableDeserializedPacket::new` function gives us the `sanitized_transaction` variable which contains the deserialized tx information.
+
+We can log the TX like this:
+```rust
+info!(
+    "PAL_TX_LOG: ImmutableDeserializedPacket::new: {:#?}",
+    sanitized_transaction.clone().destruct()
+);
 ```
