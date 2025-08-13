@@ -2,7 +2,6 @@ use std::{future::IntoFuture, time::Duration};
 
 use reqwest::Client;
 use solana_sdk::transaction::Transaction;
-use tokio::time::sleep;
 
 pub struct SuiteClient {
     _client: Client,

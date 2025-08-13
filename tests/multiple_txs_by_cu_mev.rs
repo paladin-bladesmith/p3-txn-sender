@@ -24,11 +24,10 @@ async fn test_multiple_txs() {
     let transfer_ix =
         system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER2_PUBKEY, transfer_amount);
     let tx1 = suite
-        .build_tx_with_cu_price(
+        .build_tx(
             vec![transfer_ix],
             &[suite.testers[0].insecure_clone()],
             None,
-            0,
         )
         .await;
 

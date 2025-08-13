@@ -1,18 +1,23 @@
 use std::{str::FromStr, time::Duration};
 
+use futures::stream;
+use rand::Rng;
 use reqwest::Client;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     compute_budget,
     instruction::Instruction,
     message::Message,
+    pubkey,
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
+    system_instruction,
     transaction::Transaction,
 };
 use solana_transaction_status::UiTransactionEncoding;
-use tokio::time::sleep;
+use tokio::{join, time::sleep};
+use tokio_stream::StreamExt;
 
 use crate::suite::suite_client::SuiteClient;
 
@@ -24,6 +29,20 @@ pub const TESTER2_PUBKEY: Pubkey =
     Pubkey::from_str_const("2YmebjD5Y2fTDBrF4s4DoNPFyKMJLV6ftYzUXuibrU4h");
 pub const TESTER3_PUBKEY: Pubkey =
     Pubkey::from_str_const("9Hcmomr84nehtwEj13KDNfbSLSeNSvzKtEAw3HCMyccr");
+
+/// Tip accounts
+pub const JITO_TIP_ACCOUNTS_ARR: &[Pubkey; 8] = &[
+    pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
+    pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
+    pubkey!("Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"),
+    pubkey!("ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49"),
+    pubkey!("DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh"),
+    pubkey!("ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt"),
+    pubkey!("DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"),
+    pubkey!("3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"),
+];
+
+pub const DEFAULT_TIP_RENT: u64 = 128 * 1_000_000_000 / 100 * 365 / (1024 * 1024);
 
 pub struct SuitePorts {
     pub rpc: u16,
@@ -44,10 +63,19 @@ impl Default for SuitePorts {
 }
 
 impl SuitePorts {
+    /// Regular standalone port (21 and 22)
     pub fn standalone() -> Self {
         Self {
             p3: 4821,
             mev: 4822,
+            ..Default::default()
+        }
+    }
+    /// 2nd standalone ports 23 and 24
+    pub fn standalone2() -> Self {
+        Self {
+            p3: 4823,
+            mev: 4824,
             ..Default::default()
         }
     }
@@ -110,6 +138,35 @@ impl TestSuite {
         .await
     }
 
+    pub async fn with_tips(self) -> Self {
+        let fund_tip_acc = async |key: &Pubkey| {
+            let bal = self.get_balance(key).await;
+
+            // airdrop if balance is 0
+            if bal < DEFAULT_TIP_RENT {
+                println!("Balance is low for tip acc {}", key);
+                let sig = self.request_airdrop(key, DEFAULT_TIP_RENT).await;
+
+                // Confirm airdrop finalized
+                self.get_transaction(&sig).await;
+            }
+        };
+
+        println!("Fund tip accounts");
+        join!(
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[0]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[1]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[2]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[3]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[4]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[5]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[6]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[7]),
+        );
+
+        self
+    }
+
     /// Make sure our setup is ready.
     /// Checks if clients are up and running, and all keypairs have some balance for tests
     async fn check_setup(self) -> Self {
@@ -161,7 +218,7 @@ impl TestSuite {
         from: &[Keypair],
         payer: Option<&Pubkey>,
     ) -> Transaction {
-        // Set cu limit because of unknown bug
+        // // Set cu limit because of unknown bug
         let cu_limit_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500_000);
         ixs.insert(0, cu_limit_ix);
 
@@ -176,14 +233,35 @@ impl TestSuite {
         payer: Option<&Pubkey>,
         cu_price: u64,
     ) -> Transaction {
-        if cu_price > 0 {
-            let cu_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
-            ixs.insert(0, cu_ix);
-        }
+        let cu_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+        ixs.insert(0, cu_ix);
 
         // We need to set limit because of some unknown "maybe bug" in the ordering of TXs without it
         let cu_limit_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500_000);
         ixs.insert(0, cu_limit_ix);
+
+        let message = Message::new(&ixs, payer);
+        Transaction::new(from, message, self.get_latest_blockhash().await)
+    }
+
+    pub async fn build_tx_with_tip(
+        &self,
+        mut ixs: Vec<Instruction>,
+        from: &[Keypair],
+        payer: Option<&Pubkey>,
+        tip_amount: u64,
+        tip_id: usize,
+    ) -> Transaction {
+        let tip_ix = system_instruction::transfer(
+            &from[0].pubkey(),
+            &JITO_TIP_ACCOUNTS_ARR[tip_id],
+            tip_amount,
+        );
+        ixs.insert(0, tip_ix);
+
+        // // We need to set limit because of some unknown "maybe bug" in the ordering of TXs without it
+        // let cu_limit_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+        // ixs.insert(0, cu_limit_ix);
 
         let message = Message::new(&ixs, payer);
         Transaction::new(from, message, self.get_latest_blockhash().await)

@@ -12,47 +12,54 @@ mod suite;
 #[tokio::test]
 async fn test_multiple_txs() {
     // Generate our test suite
-    let suite = TestSuite::new_local(SuitePorts::default()).await;
+    let suite = TestSuite::new_local(SuitePorts::standalone())
+        .await
+        .with_tips()
+        .await;
 
     // transfer amount
     let transfer_amount = 1000;
 
-    // Simple tranfer without CU
+    // Simple tranfer without tips
     let transfer_ix =
         system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER2_PUBKEY, transfer_amount);
     let tx1 = suite
         .build_tx(
             vec![transfer_ix],
             &[suite.testers[0].insecure_clone()],
-            None,
+            Some(&suite.testers[0].pubkey()),
         )
         .await;
 
-    // transfer with 10k CU price
+    // transfer with 10k tips
     let transfer_ix =
         system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER3_PUBKEY, transfer_amount);
 
-    // Build TX with updated CU price
+    // Build TX with updated tips
+    let tip_amount2 = 10_000;
     let tx2 = suite
-        .build_tx_with_cu_price(
+        .build_tx_with_tip(
             vec![transfer_ix],
             &[suite.testers[1].insecure_clone()],
-            None,
-            10_000,
+            Some(&suite.testers[1].pubkey()),
+            tip_amount2,
+            0
         )
         .await;
 
-    // transfer with 30k CU price
+    // transfer with 30k tips
     let transfer_ix =
         system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
-    // Build TX with updated CU price
+    // Build TX with updated tips
+    let tip_amount3 = 30_000;
     let tx3 = suite
-        .build_tx_with_cu_price(
+        .build_tx_with_tip(
             vec![transfer_ix],
             &[suite.testers[2].insecure_clone()],
-            None,
-            30_000,
+            Some(&suite.testers[2].pubkey()),
+            tip_amount3,
+            1
         )
         .await;
 
@@ -84,8 +91,18 @@ async fn test_multiple_txs() {
 
     // Assert balances are correct
     assert_eq!(before_balance_tester1 - result1.fee, balance_tester1);
-    assert_eq!(before_balance_tester2 - result2.fee, balance_tester2);
-    assert_eq!(before_balance_tester3 - result3.fee, balance_tester3);
+    assert_eq!(
+        before_balance_tester2 - result2.fee - tip_amount2,
+        balance_tester2
+    );
+    // println!(
+    //     "b: {}, f: {}, t: {}, a: {}",
+    //     before_balance_tester3, result3.fee, tip_amount3, balance_tester3
+    // );
+    assert_eq!(
+        before_balance_tester3 - result3.fee - tip_amount3,
+        balance_tester3
+    );
 
     // Assert order of txs in block
     // NOTE - the txs might split from a single block, that doesn mean it failed
@@ -99,7 +116,14 @@ async fn test_multiple_txs() {
     let tmp = suite.get_block_transactions(result1.slot).await;
     let block_txs = tmp
         .iter()
-        .filter_map(|tx| {
+        .enumerate()
+        .filter_map(|(id, tx)| {
+            if let Some(meta) = &tx.meta {
+                if let Some(err) = &meta.err {
+                    println!("TX id: {} failed with: {:#?}", id, err);
+                }
+            }
+
             let sig = if let EncodedTransaction::Json(ui_tx) = &tx.transaction {
                 ui_tx.signatures.clone()
             } else {
@@ -117,8 +141,7 @@ async fn test_multiple_txs() {
     if block_txs.len() < 3 {
         // Return meaningful error that some txs splitted and we cant assert order
         // Which mainly means to try again for better luck
-        println!("⁉️ Some txs splitted, can't assert correctly");
-        return
+        println!("⁉️ Some txs splitted, can't assert correctly")
     }
 
     for (i, tx) in block_txs.iter().enumerate() {

@@ -12,7 +12,7 @@ mod suite;
 #[tokio::test]
 async fn test_multiple_txs() {
     // Generate our test suite
-    let suite = TestSuite::new_local(SuitePorts::default()).await;
+    let suite = TestSuite::new_local(SuitePorts::standalone2()).await;
 
     // transfer amount
     let transfer_amount = 1000;
@@ -117,8 +117,7 @@ async fn test_multiple_txs() {
     if block_txs.len() < 3 {
         // Return meaningful error that some txs splitted and we cant assert order
         // Which mainly means to try again for better luck
-        println!("⁉️ Some txs splitted, can't assert correctly");
-        return
+        println!("⁉️ Some txs splitted, can't assert correctly")
     }
 
     for (i, tx) in block_txs.iter().enumerate() {

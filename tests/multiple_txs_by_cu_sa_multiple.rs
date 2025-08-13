@@ -12,7 +12,8 @@ mod suite;
 #[tokio::test]
 async fn test_multiple_txs() {
     // Generate our test suite
-    let suite = TestSuite::new_local(SuitePorts::default()).await;
+    let suite = TestSuite::new_local(SuitePorts::standalone()).await;
+    let suite2 = TestSuite::new_local(SuitePorts::standalone2()).await;
 
     // transfer amount
     let transfer_amount = 1000;
@@ -62,13 +63,15 @@ async fn test_multiple_txs() {
     let before_balance_tester3 = suite.get_balance(&TESTER3_PUBKEY).await;
 
     // Send TXs with small delay between them
-    let results = suite
-        .p3_client
-        .send_multiple_transactions(&[tx1, tx2, tx3])
-        .await;
-    let sig1 = results[0].clone();
-    let sig2 = results[1].clone();
-    let sig3 = results[2].clone();
+    let txs1 = [tx1, tx3];
+    let txs2 = [tx2];
+    let (results1, results2) = join!(
+        suite.p3_client.send_multiple_transactions(&txs1),
+        suite2.p3_client.send_multiple_transactions(&txs2)
+    );
+    let sig1 = results1[0].clone();
+    let sig2 = results2[0].clone();
+    let sig3 = results1[1].clone();
 
     // Confirm both TXs
     let (result1, result2, result3) = join!(
@@ -117,8 +120,7 @@ async fn test_multiple_txs() {
     if block_txs.len() < 3 {
         // Return meaningful error that some txs splitted and we cant assert order
         // Which mainly means to try again for better luck
-        println!("⁉️ Some txs splitted, can't assert correctly");
-        return
+        println!("⁉️ Some txs splitted, can't assert correctly")
     }
 
     for (i, tx) in block_txs.iter().enumerate() {
