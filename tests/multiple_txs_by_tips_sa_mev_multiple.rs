@@ -12,87 +12,88 @@ mod suite;
 #[tokio::test]
 async fn test_multiple_txs() {
     // Generate our test suite
-    let suite = TestSuite::new_local(SuitePorts::standalone2())
+    let suite = TestSuite::new_local(SuitePorts::standalone())
         .await
         .with_tips()
         .await;
-
-    // transfer amount
-    let transfer_amount = 1000;
-
-    // Simple tranfer without tips
-    let transfer_ix =
-        system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER2_PUBKEY, transfer_amount);
-    let tx1 = suite
-        .build_tx(
-            vec![transfer_ix],
-            &[suite.testers[0].insecure_clone()],
-            Some(&suite.testers[0].pubkey()),
-        )
+    let suite2 = TestSuite::new_local(SuitePorts::standalone2())
+        .await
+        .with_tips()
         .await;
+    let suite3 = TestSuite::new_local(SuitePorts::standalone3())
+        .await
+        .with_tips()
+        .await;
+    let transfer_amount = 1000;
 
     // transfer with 100k tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER3_PUBKEY, transfer_amount);
+        system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER2_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
-    let tip_amount2 = 1_000_000;
-    let tx2 = suite
+    let tip_amount2 = 100_000;
+    let tx1 = suite
         .build_tx_with_tip(
             vec![transfer_ix],
             &[suite.testers[1].insecure_clone()],
             Some(&suite.testers[1].pubkey()),
             tip_amount2,
-            0
+            0,
         )
         .await;
 
     // transfer with 300k tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER3_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
-    let tip_amount3 = 3_000_000;
-    let tx3 = suite
+    let tip_amount3 = 300_000;
+    let tx2 = suite
         .build_tx_with_tip(
             vec![transfer_ix],
             &[suite.testers[2].insecure_clone()],
             Some(&suite.testers[2].pubkey()),
             tip_amount3,
-            1
+            1,
+        )
+        .await;
+
+    let transfer_ix =
+        system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+    let tx3 = suite
+        .build_tx_with_tip(
+            vec![transfer_ix],
+            &[suite.testers[0].insecure_clone()],
+            Some(&suite.testers[0].pubkey()),
+            600_000,
+            2,
         )
         .await;
 
     // Get balances before TX
-    let before_balance_tester1 = suite.get_balance(&TESTER1_PUBKEY).await;
     let before_balance_tester2 = suite.get_balance(&TESTER2_PUBKEY).await;
     let before_balance_tester3 = suite.get_balance(&TESTER3_PUBKEY).await;
 
     // Send TXs with small delay between them
-    let results = suite
-        .p3_client
-        .send_multiple_transactions(&[tx1, tx2, tx3])
-        .await;
-    let sig1 = results[0].clone();
-    let sig2 = results[1].clone();
-    let sig3 = results[2].clone();
+    let t1 = suite.mev_client.send_transaction(tx1);
+    let t2 = suite2.mev_client.send_transaction(tx2);
+    let t3 = suite3.mev_client.send_transaction(tx3);
+    let (sig1, sig2, sig3) = join!(t1, t2, t3);
 
     // Confirm both TXs
     let (result1, result2, result3) = join!(
         suite.get_transaction(&sig1),
         suite.get_transaction(&sig2),
-        suite.get_transaction(&sig3)
+        suite.get_transaction(&sig3),
     );
 
     // Updated balances
-    let balance_tester1 = suite.get_balance(&TESTER1_PUBKEY).await;
     let balance_tester2 = suite.get_balance(&TESTER2_PUBKEY).await;
     let balance_tester3 = suite.get_balance(&TESTER3_PUBKEY).await;
 
     // Assert balances are correct
-    assert_eq!(before_balance_tester1 - result1.fee, balance_tester1);
     assert_eq!(
-        before_balance_tester2 - result2.fee - tip_amount2,
+        before_balance_tester2 - result1.fee - tip_amount2,
         balance_tester2
     );
     // println!(
@@ -100,7 +101,7 @@ async fn test_multiple_txs() {
     //     before_balance_tester3, result3.fee, tip_amount3, balance_tester3
     // );
     assert_eq!(
-        before_balance_tester3 - result3.fee - tip_amount3,
+        before_balance_tester3 - result2.fee - tip_amount3,
         balance_tester3
     );
 
@@ -110,7 +111,7 @@ async fn test_multiple_txs() {
     // do not error in this case, rather return a meaningful log
 
     // Expected order of results
-    let expected = vec![vec![sig3], vec![sig2], vec![sig1]];
+    let expected = vec![vec![sig2], vec![sig1]];
 
     // Get block of first tx
     let tmp = suite.get_block_transactions(result1.slot).await;
@@ -150,4 +151,6 @@ async fn test_multiple_txs() {
             break;
         }
     }
+
+    println!("Received TXs: {:#?}", block_txs)
 }

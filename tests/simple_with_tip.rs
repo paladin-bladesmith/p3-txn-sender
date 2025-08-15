@@ -10,16 +10,25 @@ mod suite;
 #[tokio::test]
 async fn test_simple() {
     // Generate our test suite
-    let suite = TestSuite::new_local(SuitePorts::default()).await;
+    let suite = TestSuite::new_local(SuitePorts::default())
+        .await
+        .with_tips()
+        .await;
 
     // Simple transfer TX
     let transfer_amount = 1000;
     let ix =
         system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER2_PUBKEY, transfer_amount);
 
-        let tip_amount = 500;
+    let tip_amount = 500;
     let tx = suite
-        .build_tx_with_tip(vec![ix], &[suite.testers[0].insecure_clone()], None, tip_amount, 0)
+        .build_tx_with_tip(
+            vec![ix],
+            &[suite.testers[0].insecure_clone()],
+            None,
+            tip_amount,
+            0,
+        )
         .await;
 
     // Get balances before TX

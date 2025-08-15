@@ -28,7 +28,7 @@ async fn test_multiple_txs() {
         )
         .await;
 
-    // transfer with 10k CU price
+    // transfer with 100k CU price
     let transfer_ix =
         system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER3_PUBKEY, transfer_amount);
 
@@ -38,11 +38,11 @@ async fn test_multiple_txs() {
             vec![transfer_ix],
             &[suite.testers[1].insecure_clone()],
             None,
-            10_000,
+            100_000,
         )
         .await;
 
-    // transfer with 30k CU price
+    // transfer with 300k CU price
     let transfer_ix =
         system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
@@ -52,7 +52,7 @@ async fn test_multiple_txs() {
             vec![transfer_ix],
             &[suite.testers[2].insecure_clone()],
             None,
-            30_000,
+            300_000,
         )
         .await;
 

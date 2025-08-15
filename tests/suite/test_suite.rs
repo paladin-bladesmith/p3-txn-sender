@@ -31,18 +31,19 @@ pub const TESTER3_PUBKEY: Pubkey =
     Pubkey::from_str_const("9Hcmomr84nehtwEj13KDNfbSLSeNSvzKtEAw3HCMyccr");
 
 /// Tip accounts
-pub const JITO_TIP_ACCOUNTS_ARR: &[Pubkey; 8] = &[
+pub const JITO_TIP_ACCOUNTS_ARR: &[Pubkey; 3] = &[
     pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
     pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
     pubkey!("Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"),
-    pubkey!("ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49"),
-    pubkey!("DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh"),
-    pubkey!("ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt"),
-    pubkey!("DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"),
-    pubkey!("3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"),
+    // pubkey!("ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49"),
+    // pubkey!("DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh"),
+    // pubkey!("ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt"),
+    // pubkey!("DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"),
+    // pubkey!("3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"),
 ];
 
-pub const DEFAULT_TIP_RENT: u64 = 128 * 1_000_000_000 / 100 * 365 / (1024 * 1024);
+pub const RENT_PER_YEAR_PER_BYTE: u64 = 1_000_000_000 / 100 * 365 / (1024 * 1024);
+pub const DEFAULT_TIP_RENT: u64 = 2 * (8 + 128) * RENT_PER_YEAR_PER_BYTE;
 
 pub struct SuitePorts {
     pub rpc: u16,
@@ -76,6 +77,13 @@ impl SuitePorts {
         Self {
             p3: 4823,
             mev: 4824,
+            ..Default::default()
+        }
+    }
+    pub fn standalone3() -> Self {
+        Self {
+            p3: 4825,
+            mev: 4826,
             ..Default::default()
         }
     }
@@ -144,7 +152,7 @@ impl TestSuite {
 
             // airdrop if balance is 0
             if bal < DEFAULT_TIP_RENT {
-                println!("Balance is low for tip acc {}", key);
+                println!("Balance is low for tip acc {} - {}", key, bal);
                 let sig = self.request_airdrop(key, DEFAULT_TIP_RENT).await;
 
                 // Confirm airdrop finalized
@@ -157,11 +165,11 @@ impl TestSuite {
             fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[0]),
             fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[1]),
             fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[2]),
-            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[3]),
-            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[4]),
-            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[5]),
-            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[6]),
-            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[7]),
+            // fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[3]),
+            // fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[4]),
+            // fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[5]),
+            // fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[6]),
+            // fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[7]),
         );
 
         self
@@ -204,10 +212,17 @@ impl TestSuite {
             }
         };
 
-        validate_balance(&self.validator_keypair.pubkey()).await;
-        validate_balance(&self.testers[0].pubkey()).await;
-        validate_balance(&self.testers[1].pubkey()).await;
-        validate_balance(&self.testers[2].pubkey()).await;
+        let val_pubkey = self.validator_keypair.pubkey();
+        let pub1 = self.testers[0].pubkey();
+        let pub2 = self.testers[1].pubkey();
+        let pub3 = self.testers[2].pubkey();
+
+        join!(
+            validate_balance(&val_pubkey),
+            validate_balance(&pub1),
+            validate_balance(&pub2),
+            validate_balance(&pub3),
+        );
 
         self
     }
@@ -218,10 +233,6 @@ impl TestSuite {
         from: &[Keypair],
         payer: Option<&Pubkey>,
     ) -> Transaction {
-        // // Set cu limit because of unknown bug
-        let cu_limit_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500_000);
-        ixs.insert(0, cu_limit_ix);
-
         let message = Message::new(&ixs, payer);
         Transaction::new(from, message, self.get_latest_blockhash().await)
     }
@@ -235,10 +246,6 @@ impl TestSuite {
     ) -> Transaction {
         let cu_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
         ixs.insert(0, cu_ix);
-
-        // We need to set limit because of some unknown "maybe bug" in the ordering of TXs without it
-        let cu_limit_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500_000);
-        ixs.insert(0, cu_limit_ix);
 
         let message = Message::new(&ixs, payer);
         Transaction::new(from, message, self.get_latest_blockhash().await)
@@ -258,10 +265,6 @@ impl TestSuite {
             tip_amount,
         );
         ixs.insert(0, tip_ix);
-
-        // // We need to set limit because of some unknown "maybe bug" in the ordering of TXs without it
-        // let cu_limit_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(500_000);
-        // ixs.insert(0, cu_limit_ix);
 
         let message = Message::new(&ixs, payer);
         Transaction::new(from, message, self.get_latest_blockhash().await)

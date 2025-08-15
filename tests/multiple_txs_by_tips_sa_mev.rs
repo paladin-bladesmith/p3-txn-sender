@@ -12,7 +12,7 @@ mod suite;
 #[tokio::test]
 async fn test_multiple_txs() {
     // Generate our test suite
-    let suite = TestSuite::new_local(SuitePorts::standalone2())
+    let suite = TestSuite::new_local(SuitePorts::standalone())
         .await
         .with_tips()
         .await;
@@ -22,7 +22,7 @@ async fn test_multiple_txs() {
 
     // Simple tranfer without tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER2_PUBKEY, transfer_amount);
+        system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER1_PUBKEY, transfer_amount);
     let tx1 = suite
         .build_tx(
             vec![transfer_ix],
@@ -33,7 +33,7 @@ async fn test_multiple_txs() {
 
     // transfer with 100k tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER3_PUBKEY, transfer_amount);
+        system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER2_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
     let tip_amount2 = 1_000_000;
@@ -49,7 +49,7 @@ async fn test_multiple_txs() {
 
     // transfer with 300k tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER3_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
     let tip_amount3 = 3_000_000;
@@ -70,7 +70,7 @@ async fn test_multiple_txs() {
 
     // Send TXs with small delay between them
     let results = suite
-        .p3_client
+        .mev_client
         .send_multiple_transactions(&[tx1, tx2, tx3])
         .await;
     let sig1 = results[0].clone();
@@ -150,4 +150,6 @@ async fn test_multiple_txs() {
             break;
         }
     }
+
+    println!("Received TXs: {:#?}", block_txs)
 }

@@ -36,7 +36,7 @@ async fn test_multiple_txs() {
         system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER3_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
-    let tip_amount2 = 10_000;
+    let tip_amount2 = 1_000_000;
     let tx2 = suite
         .build_tx_with_tip(
             vec![transfer_ix],
@@ -52,7 +52,7 @@ async fn test_multiple_txs() {
         system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
-    let tip_amount3 = 30_000;
+    let tip_amount3 = 3_000_000;
     let tx3 = suite
         .build_tx_with_tip(
             vec![transfer_ix],
@@ -95,10 +95,6 @@ async fn test_multiple_txs() {
         before_balance_tester2 - result2.fee - tip_amount2,
         balance_tester2
     );
-    // println!(
-    //     "b: {}, f: {}, t: {}, a: {}",
-    //     before_balance_tester3, result3.fee, tip_amount3, balance_tester3
-    // );
     assert_eq!(
         before_balance_tester3 - result3.fee - tip_amount3,
         balance_tester3
