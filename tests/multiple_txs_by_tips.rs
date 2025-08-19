@@ -31,12 +31,12 @@ async fn test_multiple_txs() {
         )
         .await;
 
-    // transfer with 10k tips
+    // transfer with 100k tips
     let transfer_ix =
         system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER3_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
-    let tip_amount2 = 1_000_000;
+    let tip_amount2 = 100_000;
     let tx2 = suite
         .build_tx_with_tip(
             vec![transfer_ix],
@@ -47,12 +47,12 @@ async fn test_multiple_txs() {
         )
         .await;
 
-    // transfer with 30k tips
+    // transfer with 300k tips
     let transfer_ix =
         system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
-    let tip_amount3 = 3_000_000;
+    let tip_amount3 = 300_000;
     let tx3 = suite
         .build_tx_with_tip(
             vec![transfer_ix],
@@ -108,42 +108,6 @@ async fn test_multiple_txs() {
     // Expected order of results
     let expected = vec![vec![sig3], vec![sig2], vec![sig1]];
 
-    // Get block of first tx
-    let tmp = suite.get_block_transactions(result1.slot).await;
-    let block_txs = tmp
-        .iter()
-        .enumerate()
-        .filter_map(|(id, tx)| {
-            if let Some(meta) = &tx.meta {
-                if let Some(err) = &meta.err {
-                    println!("TX id: {} failed with: {:#?}", id, err);
-                }
-            }
-
-            let sig = if let EncodedTransaction::Json(ui_tx) = &tx.transaction {
-                ui_tx.signatures.clone()
-            } else {
-                panic!("Failed to parse TX")
-            };
-
-            if expected.contains(&sig) {
-                Some(sig)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
-    if block_txs.len() < 3 {
-        // Return meaningful error that some txs splitted and we cant assert order
-        // Which mainly means to try again for better luck
-        println!("⁉️ Some txs splitted, can't assert correctly")
-    }
-
-    for (i, tx) in block_txs.iter().enumerate() {
-        if tx != &expected[i] {
-            println!("❌ Order at index {} is wrong", i);
-            break;
-        }
-    }
+    // Assert order is as expected
+    suite.assert_txs_order(result1.slot, expected).await;
 }

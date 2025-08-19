@@ -95,59 +95,14 @@ async fn test_multiple_txs() {
         before_balance_tester2 - result2.fee - tip_amount2,
         balance_tester2
     );
-    // println!(
-    //     "b: {}, f: {}, t: {}, a: {}",
-    //     before_balance_tester3, result3.fee, tip_amount3, balance_tester3
-    // );
     assert_eq!(
         before_balance_tester3 - result3.fee - tip_amount3,
         balance_tester3
     );
-
-    // Assert order of txs in block
-    // NOTE - the txs might split from a single block, that doesn mean it failed
-    // rather the timing was not perfect to include all txs in a single batch.
-    // do not error in this case, rather return a meaningful log
-
+    
     // Expected order of results
     let expected = vec![vec![sig3], vec![sig2], vec![sig1]];
 
-    // Get block of first tx
-    let tmp = suite.get_block_transactions(result1.slot).await;
-    let block_txs = tmp
-        .iter()
-        .enumerate()
-        .filter_map(|(id, tx)| {
-            if let Some(meta) = &tx.meta {
-                if let Some(err) = &meta.err {
-                    println!("TX id: {} failed with: {:#?}", id, err);
-                }
-            }
-
-            let sig = if let EncodedTransaction::Json(ui_tx) = &tx.transaction {
-                ui_tx.signatures.clone()
-            } else {
-                panic!("Failed to parse TX")
-            };
-
-            if expected.contains(&sig) {
-                Some(sig)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
-    if block_txs.len() < 3 {
-        // Return meaningful error that some txs splitted and we cant assert order
-        // Which mainly means to try again for better luck
-        println!("⁉️ Some txs splitted, can't assert correctly")
-    }
-
-    for (i, tx) in block_txs.iter().enumerate() {
-        if tx != &expected[i] {
-            println!("❌ Order at index {} is wrong", i);
-            break;
-        }
-    }
+    // Assert order is as expected
+    suite.assert_txs_order(result1.slot, expected).await;
 }

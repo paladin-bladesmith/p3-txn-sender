@@ -19,13 +19,13 @@ impl SuiteClient {
     }
 
     /// Sends single transaction to this port
-    pub async fn send_transaction(&self, tx: Transaction) -> String {
+    pub async fn send_transaction(&self, tx: Transaction, id: u8) -> String {
         send_transaction(
             self._client.clone(),
             self.client_url.clone(),
             self.send_port,
             tx,
-            0,
+            id,
         )
         .await
     }
@@ -40,7 +40,7 @@ impl SuiteClient {
                 self.client_url.clone(),
                 self.send_port.clone(),
                 tx.clone(),
-                i as u8,
+                (i as u8) + 1,
             )));
         }
 

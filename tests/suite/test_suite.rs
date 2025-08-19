@@ -1,7 +1,5 @@
 use std::{str::FromStr, time::Duration};
 
-use futures::stream;
-use rand::Rng;
 use reqwest::Client;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
@@ -15,14 +13,11 @@ use solana_sdk::{
     system_instruction,
     transaction::Transaction,
 };
-use solana_transaction_status::UiTransactionEncoding;
+use solana_transaction_status::{EncodedTransaction, UiTransactionEncoding};
 use tokio::{join, time::sleep};
-use tokio_stream::StreamExt;
 
 use crate::suite::suite_client::SuiteClient;
 
-pub const VALIDATOR_PUBKEY: Pubkey =
-    Pubkey::from_str_const("3wWrxQNpmGRzaVYVCCGEVLV6GMHG4Vvzza4iT79atw5A");
 pub const TESTER1_PUBKEY: Pubkey =
     Pubkey::from_str_const("7gt41ih9Q3CBB6gUwj2xQFBEd72MNSFMBFv8rHhrYr9E");
 pub const TESTER2_PUBKEY: Pubkey =
@@ -31,15 +26,15 @@ pub const TESTER3_PUBKEY: Pubkey =
     Pubkey::from_str_const("9Hcmomr84nehtwEj13KDNfbSLSeNSvzKtEAw3HCMyccr");
 
 /// Tip accounts
-pub const JITO_TIP_ACCOUNTS_ARR: &[Pubkey; 3] = &[
+pub const JITO_TIP_ACCOUNTS_ARR: &[Pubkey; 8] = &[
     pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
     pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
     pubkey!("Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"),
-    // pubkey!("ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49"),
-    // pubkey!("DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh"),
-    // pubkey!("ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt"),
-    // pubkey!("DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"),
-    // pubkey!("3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"),
+    pubkey!("ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49"),
+    pubkey!("DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh"),
+    pubkey!("ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt"),
+    pubkey!("DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"),
+    pubkey!("3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"),
 ];
 
 pub const RENT_PER_YEAR_PER_BYTE: u64 = 1_000_000_000 / 100 * 365 / (1024 * 1024);
@@ -100,6 +95,7 @@ pub struct TestSuite {
     pub p3_client: SuiteClient,
     pub mev_client: SuiteClient,
     pub validator_keypair: Keypair,
+    pub vote_keypair: Keypair,
     pub testers: [Keypair; 3],
     base_url: String,
     ports: SuitePorts,
@@ -116,6 +112,9 @@ impl TestSuite {
 
         let validator_keypair =
             solana_sdk::signature::read_keypair_file("tests/keypairs/validator-keypair.json")
+                .expect("Failed to read validator-keypair");
+        let vote_keypair =
+            solana_sdk::signature::read_keypair_file("tests/keypairs/vote-account-keypair.json")
                 .expect("Failed to read validator-keypair");
 
         // Set 3 testers (should be enough for all tests)
@@ -138,6 +137,7 @@ impl TestSuite {
             p3_client,
             mev_client,
             validator_keypair,
+            vote_keypair,
             testers: [tester1_keypair, tester2_keypair, tester3_keypair],
             base_url: url.to_string(),
             ports,
@@ -160,16 +160,15 @@ impl TestSuite {
             }
         };
 
-        println!("Fund tip accounts");
         join!(
             fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[0]),
             fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[1]),
             fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[2]),
-            // fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[3]),
-            // fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[4]),
-            // fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[5]),
-            // fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[6]),
-            // fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[7]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[3]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[4]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[5]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[6]),
+            fund_tip_acc(&JITO_TIP_ACCOUNTS_ARR[7]),
         );
 
         self
@@ -212,16 +211,15 @@ impl TestSuite {
             }
         };
 
-        let val_pubkey = self.validator_keypair.pubkey();
-        let pub1 = self.testers[0].pubkey();
-        let pub2 = self.testers[1].pubkey();
-        let pub3 = self.testers[2].pubkey();
+        let validator_pubkey = self.validator_keypair.pubkey();
+        let vote_pubkey = self.vote_keypair.pubkey();
 
         join!(
-            validate_balance(&val_pubkey),
-            validate_balance(&pub1),
-            validate_balance(&pub2),
-            validate_balance(&pub3),
+            validate_balance(&validator_pubkey),
+            validate_balance(&vote_pubkey),
+            validate_balance(&TESTER1_PUBKEY),
+            validate_balance(&TESTER2_PUBKEY),
+            validate_balance(&TESTER3_PUBKEY),
         );
 
         self
@@ -229,7 +227,7 @@ impl TestSuite {
 
     pub async fn build_tx(
         &self,
-        mut ixs: Vec<Instruction>,
+        ixs: Vec<Instruction>,
         from: &[Keypair],
         payer: Option<&Pubkey>,
     ) -> Transaction {
@@ -259,6 +257,29 @@ impl TestSuite {
         tip_amount: u64,
         tip_id: usize,
     ) -> Transaction {
+        let tip_ix = system_instruction::transfer(
+            &from[0].pubkey(),
+            &JITO_TIP_ACCOUNTS_ARR[tip_id],
+            tip_amount,
+        );
+        ixs.insert(0, tip_ix);
+
+        let message = Message::new(&ixs, payer);
+        Transaction::new(from, message, self.get_latest_blockhash().await)
+    }
+
+    pub async fn build_tx_with_cu_and_tip(
+        &self,
+        mut ixs: Vec<Instruction>,
+        from: &[Keypair],
+        payer: Option<&Pubkey>,
+        cu_price: u64,
+        tip_amount: u64,
+        tip_id: usize,
+    ) -> Transaction {
+        let cu_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+        ixs.insert(0, cu_ix);
+
         let tip_ix = system_instruction::transfer(
             &from[0].pubkey(),
             &JITO_TIP_ACCOUNTS_ARR[tip_id],
@@ -319,6 +340,54 @@ impl TestSuite {
         } else {
             panic!("❌ Failed getting the transaction");
         }
+    }
+
+    /// Assert order of txs in block
+    /// NOTE - the txs might split from a single block, that doesn mean it failed
+    /// rather the timing was not perfect to include all txs in a single batch.
+    /// do not error in this case, rather return a meaningful log
+    pub async fn assert_txs_order(&self, slot: u64, expected: Vec<Vec<String>>) {
+        let tmp = self.get_block_transactions(slot).await;
+        let block_txs = tmp
+            .iter()
+            .enumerate()
+            .filter_map(|(id, tx)| {
+                if let Some(meta) = &tx.meta {
+                    if let Some(err) = &meta.err {
+                        panic!("TX id: {} failed with: {:#?}", id, err);
+                    }
+                }
+
+                let sig = if let EncodedTransaction::Json(ui_tx) = &tx.transaction {
+                    ui_tx.signatures.clone()
+                } else {
+                    panic!("Failed to parse TX")
+                };
+
+                if expected.contains(&sig) {
+                    Some(sig)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if block_txs.len() < 3 {
+            // Return meaningful error that some txs splitted and we cant assert order
+            // Which mainly means to try again for better luck
+            panic!("⁉️ Some txs splitted, can't assert correctly")
+        }
+
+        for (i, tx) in block_txs.iter().enumerate() {
+            if tx != &expected[i] {
+                panic!(
+                    "❌ Order at index {} is wrong \nExpected TXs: {:#?} \nReceived TXs: {:#?}",
+                    i, expected, block_txs
+                );
+            }
+        }
+
+        println!("✅ Test was successful!");
     }
 
     pub async fn get_block_transactions(

@@ -30,7 +30,7 @@ async fn test_simple_with_cu() {
     let before_balance_tester2 = suite.get_balance(&TESTER2_PUBKEY).await;
 
     // Set and confirm TX
-    let sig = suite.p3_client.send_transaction(tx).await;
+    let sig = suite.p3_client.send_transaction(tx, 1).await;
     let result = suite.get_transaction(&sig).await;
 
     // Updated balances

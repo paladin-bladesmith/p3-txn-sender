@@ -35,7 +35,7 @@ pub enum SendPorts {
 
     // Standalone secondary ports to avoid conflicts
     P3S3 = 4825,
-    MevS4 = 4826,
+    MevS3 = 4826,
 }
 
 impl From<SendPorts> for u16 {
@@ -53,8 +53,8 @@ impl From<u16> for SendPorts {
             4822 => SendPorts::MevS,
             4823 => SendPorts::P3S2,
             4824 => SendPorts::MevS2,
-            4825 => SendPorts::P3S2,
-            4826 => SendPorts::MevS2,
+            4825 => SendPorts::P3S3,
+            4826 => SendPorts::MevS3,
             _ => panic!("Invalid port value: {}", value),
         }
     }

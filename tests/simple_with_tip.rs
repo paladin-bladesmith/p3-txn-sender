@@ -20,7 +20,7 @@ async fn test_simple() {
     let ix =
         system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER2_PUBKEY, transfer_amount);
 
-    let tip_amount = 500;
+    let tip_amount = 100_000;
     let tx = suite
         .build_tx_with_tip(
             vec![ix],
@@ -36,7 +36,7 @@ async fn test_simple() {
     let before_balance_tester2 = suite.get_balance(&TESTER2_PUBKEY).await;
 
     // Set and confirm TX
-    let sig = suite.p3_client.send_transaction(tx).await;
+    let sig = suite.p3_client.send_transaction(tx, 1).await;
     let result = suite.get_transaction(&sig).await;
 
     // Updated balances
