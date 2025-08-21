@@ -24,6 +24,10 @@ pub const TESTER2_PUBKEY: Pubkey =
     Pubkey::from_str_const("2YmebjD5Y2fTDBrF4s4DoNPFyKMJLV6ftYzUXuibrU4h");
 pub const TESTER3_PUBKEY: Pubkey =
     Pubkey::from_str_const("9Hcmomr84nehtwEj13KDNfbSLSeNSvzKtEAw3HCMyccr");
+pub const TESTER4_PUBKEY: Pubkey =
+    Pubkey::from_str_const("8x4TtfAgPGDa4KoeT5CQbQSRxPh6F6g4aqHjaxjmCeN1");
+pub const TESTER5_PUBKEY: Pubkey =
+    Pubkey::from_str_const("As2okQ75RWobqTzdowupHzpHrBmiYy9QH2jbTZ6GmQsE");
 
 /// Tip accounts
 pub const JITO_TIP_ACCOUNTS_ARR: &[Pubkey; 8] = &[
@@ -96,7 +100,7 @@ pub struct TestSuite {
     pub mev_client: SuiteClient,
     pub validator_keypair: Keypair,
     pub vote_keypair: Keypair,
-    pub testers: [Keypair; 3],
+    pub testers: [Keypair; 5],
     base_url: String,
     ports: SuitePorts,
 }
@@ -117,7 +121,7 @@ impl TestSuite {
             solana_sdk::signature::read_keypair_file("tests/keypairs/vote-account-keypair.json")
                 .expect("Failed to read validator-keypair");
 
-        // Set 3 testers (should be enough for all tests)
+        // Set 5 testers (should be enough for all tests)
         let tester1_keypair =
             solana_sdk::signature::read_keypair_file("tests/keypairs/tester1.json")
                 .expect("Failed to read tester1");
@@ -127,6 +131,12 @@ impl TestSuite {
         let tester3_keypair =
             solana_sdk::signature::read_keypair_file("tests/keypairs/tester3.json")
                 .expect("Failed to read tester3");
+        let tester4_keypair =
+            solana_sdk::signature::read_keypair_file("tests/keypairs/tester4.json")
+                .expect("Failed to read tester4");
+        let tester5_keypair =
+            solana_sdk::signature::read_keypair_file("tests/keypairs/tester5.json")
+                .expect("Failed to read tester5");
 
         let client_url = format!("{}:{}", url, ports.sender);
         let p3_client = SuiteClient::new(client_url.clone(), ports.p3);
@@ -138,7 +148,13 @@ impl TestSuite {
             mev_client,
             validator_keypair,
             vote_keypair,
-            testers: [tester1_keypair, tester2_keypair, tester3_keypair],
+            testers: [
+                tester1_keypair,
+                tester2_keypair,
+                tester3_keypair,
+                tester4_keypair,
+                tester5_keypair,
+            ],
             base_url: url.to_string(),
             ports,
         }
@@ -220,6 +236,8 @@ impl TestSuite {
             validate_balance(&TESTER1_PUBKEY),
             validate_balance(&TESTER2_PUBKEY),
             validate_balance(&TESTER3_PUBKEY),
+            validate_balance(&TESTER4_PUBKEY),
+            validate_balance(&TESTER5_PUBKEY),
         );
 
         self
@@ -338,7 +356,7 @@ impl TestSuite {
                 slot: result.slot,
             }
         } else {
-            panic!("❌ Failed getting the transaction");
+            panic!("❌ Failed getting the transaction for: {}", sig);
         }
     }
 
@@ -372,7 +390,7 @@ impl TestSuite {
             })
             .collect::<Vec<_>>();
 
-        if block_txs.len() < 3 {
+        if block_txs.len() < expected.len() {
             // Return meaningful error that some txs splitted and we cant assert order
             // Which mainly means to try again for better luck
             panic!("⁉️ Some txs splitted, can't assert correctly")

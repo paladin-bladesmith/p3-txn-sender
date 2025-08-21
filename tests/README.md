@@ -133,7 +133,13 @@ After you successfully started the test validator, you need to start p3-txn-send
 
 ## Run tests
 
-To confirm everything is up and running smoothly, you can try to run the simple test:
+Before running all tests, please run the setup test to setup the test ledger and fund accounts:
+
+```bash
+cargo test --test setup -- --nocapture
+```
+
+To confirm everything is up and running smoothly, you can try to run the simple tests:
 
 ```bash
 cargo test --test simple -- --nocapture

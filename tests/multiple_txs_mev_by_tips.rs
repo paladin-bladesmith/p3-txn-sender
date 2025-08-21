@@ -1,5 +1,4 @@
 use solana_sdk::{signer::Signer, system_instruction};
-use solana_transaction_status::EncodedTransaction;
 use tokio::join;
 
 use crate::suite::{SuitePorts, TestSuite, TESTER1_PUBKEY, TESTER2_PUBKEY, TESTER3_PUBKEY};
@@ -9,10 +8,11 @@ mod suite;
 // Test with multiple TXs sent to the validator
 // We send the same amount from tester 1 to 2, then from 2 to 3, and then from 3 back to 1.
 // At the end of the test, everyone should have same amount of funds, but minus the paid fees
+// all TXs are sent to the validator mev3 port with tips
 #[tokio::test]
 async fn test_multiple_txs() {
     // Generate our test suite
-    let suite = TestSuite::new_local(SuitePorts::standalone())
+    let suite = TestSuite::new_local(SuitePorts::default())
         .await
         .with_tips()
         .await;
@@ -22,7 +22,7 @@ async fn test_multiple_txs() {
 
     // Simple tranfer without tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER2_PUBKEY, transfer_amount);
     let tx1 = suite
         .build_tx(
             vec![transfer_ix],
@@ -33,10 +33,10 @@ async fn test_multiple_txs() {
 
     // transfer with 100k tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER2_PUBKEY, transfer_amount);
+        system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER3_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
-    let tip_amount2 = 1_000_000;
+    let tip_amount2 = 100_000;
     let tx2 = suite
         .build_tx_with_tip(
             vec![transfer_ix],
@@ -49,10 +49,10 @@ async fn test_multiple_txs() {
 
     // transfer with 300k tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER3_PUBKEY, transfer_amount);
+        system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
-    let tip_amount3 = 3_000_000;
+    let tip_amount3 = 300_000;
     let tx3 = suite
         .build_tx_with_tip(
             vec![transfer_ix],
@@ -95,61 +95,14 @@ async fn test_multiple_txs() {
         before_balance_tester2 - result2.fee - tip_amount2,
         balance_tester2
     );
-    // println!(
-    //     "b: {}, f: {}, t: {}, a: {}",
-    //     before_balance_tester3, result3.fee, tip_amount3, balance_tester3
-    // );
     assert_eq!(
         before_balance_tester3 - result3.fee - tip_amount3,
         balance_tester3
     );
 
-    // Assert order of txs in block
-    // NOTE - the txs might split from a single block, that doesn mean it failed
-    // rather the timing was not perfect to include all txs in a single batch.
-    // do not error in this case, rather return a meaningful log
-
     // Expected order of results
     let expected = vec![vec![sig3], vec![sig2], vec![sig1]];
 
-    // Get block of first tx
-    let tmp = suite.get_block_transactions(result1.slot).await;
-    let block_txs = tmp
-        .iter()
-        .enumerate()
-        .filter_map(|(id, tx)| {
-            if let Some(meta) = &tx.meta {
-                if let Some(err) = &meta.err {
-                    println!("TX id: {} failed with: {:#?}", id, err);
-                }
-            }
-
-            let sig = if let EncodedTransaction::Json(ui_tx) = &tx.transaction {
-                ui_tx.signatures.clone()
-            } else {
-                panic!("Failed to parse TX")
-            };
-
-            if expected.contains(&sig) {
-                Some(sig)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
-    if block_txs.len() < 3 {
-        // Return meaningful error that some txs splitted and we cant assert order
-        // Which mainly means to try again for better luck
-        println!("⁉️ Some txs splitted, can't assert correctly")
-    }
-
-    for (i, tx) in block_txs.iter().enumerate() {
-        if tx != &expected[i] {
-            println!("❌ Order at index {} is wrong", i);
-            break;
-        }
-    }
-
-    println!("Received TXs: {:#?}", block_txs)
+    // Assert order is as expected
+    suite.assert_txs_order(result1.slot, expected).await;
 }

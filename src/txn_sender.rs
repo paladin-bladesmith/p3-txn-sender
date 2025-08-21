@@ -210,7 +210,6 @@ impl TxnSender for TxnSenderImpl {
             self.txn_sender_runtime.spawn(async move {
                 let mut socket_addr = leader.gossip.unwrap();
                 socket_addr.set_port(send_port);
-                info!("p3 port send is: {}", send_port);
 
                 for i in 0..SEND_TXN_RETRIES {
                     let conn =
