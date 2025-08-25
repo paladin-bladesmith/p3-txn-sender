@@ -1,8 +1,8 @@
 use solana_sdk::{signer::Signer, system_instruction, system_transaction};
 
 use crate::suite::{
-    test_suite::{TESTER4_PUBKEY, TESTER5_PUBKEY},
-    SuitePorts, TestSuite, TESTER1_PUBKEY, TESTER2_PUBKEY, TESTER3_PUBKEY,
+    test_suite::TESTER4_PUBKEY, SuitePorts, TestSuite, TESTER1_PUBKEY, TESTER2_PUBKEY,
+    TESTER3_PUBKEY,
 };
 
 mod suite;
@@ -13,7 +13,7 @@ mod suite;
 #[tokio::test]
 async fn setup() {
     // Generate our test suite
-    let suite = TestSuite::new_local(SuitePorts::default()).await;
+    TestSuite::new_local(SuitePorts::default()).await;
 }
 
 /// Send simple transfer TX to regular p3 port
@@ -42,10 +42,7 @@ async fn simple_p3() {
     let balance_tester1 = suite.get_balance(&TESTER1_PUBKEY).await;
 
     // Assert balances are correct
-    assert_eq!(
-        before_balance_tester1 - result.fee,
-        balance_tester1
-    );
+    assert_eq!(before_balance_tester1 - result.fee, balance_tester1);
 }
 
 /// Simple TX with tips sent to mev port
@@ -123,10 +120,7 @@ async fn simple_with_cu() {
     let balance_tester1 = suite.get_balance(&TESTER3_PUBKEY).await;
 
     // Assert balances are correct
-    assert_eq!(
-        before_balance_tester1 - result.fee,
-        balance_tester1
-    );
+    assert_eq!(before_balance_tester1 - result.fee, balance_tester1);
 }
 
 /// Confirm the Standalone BE is working
@@ -155,8 +149,5 @@ async fn simple_standalone() {
     let balance_tester1 = suite.get_balance(&TESTER1_PUBKEY).await;
 
     // Assert balances are correct
-    assert_eq!(
-        before_balance_tester1 - result.fee,
-        balance_tester1
-    );
+    assert_eq!(before_balance_tester1 - result.fee, balance_tester1);
 }
