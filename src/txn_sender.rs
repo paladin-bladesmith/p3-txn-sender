@@ -10,10 +10,11 @@ use tokio::{
     time::{sleep, timeout},
 };
 use tonic::async_trait;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::{
     leader_tracker::{LeaderTracker, LeaderTrackerTrait},
+    rpc_server::RequestMetadata,
     solana_rpc::SolanaRpc,
     transaction_store::{get_signature, TransactionData, TransactionStore},
 };
@@ -29,7 +30,6 @@ pub trait TxnSender: Send + Sync {
 
 pub struct TxnSenderImpl {
     leader_tracker: Arc<LeaderTracker>,
-    p3_port: u16,
     transaction_store: Arc<dyn TransactionStore>,
     connection_cache: Arc<ConnectionCache>,
     solana_rpc: Arc<dyn SolanaRpc>,
@@ -55,9 +55,6 @@ impl TxnSenderImpl {
             .unwrap();
         let txn_sender = Self {
             leader_tracker,
-            p3_port: std::env::var("P3_PORT")
-                .map(|port| port.parse().expect("Invalid P3_PORT"))
-                .unwrap_or(4819),
             transaction_store,
             connection_cache,
             solana_rpc,
@@ -76,7 +73,6 @@ impl TxnSenderImpl {
         let txn_sender_runtime = self.txn_sender_runtime.clone();
         let txn_send_retry_interval_seconds = self.txn_send_retry_interval_seconds;
         let max_retry_queue_size = self.max_retry_queue_size;
-        let p3_port = self.p3_port;
         tokio::spawn(async move {
             loop {
                 let mut transactions_reached_max_retries = vec![];
@@ -109,7 +105,10 @@ impl TxnSenderImpl {
 
                 let mut wire_transactions = vec![];
                 for mut transaction_data in transaction_map.iter_mut() {
-                    wire_transactions.push(transaction_data.wire_transaction.clone());
+                    wire_transactions.push((
+                        transaction_data.request_metadata.send_port,
+                        transaction_data.wire_transaction.clone(),
+                    ));
                     if transaction_data.retry_count >= transaction_data.max_retries {
                         transactions_reached_max_retries
                             .push(get_signature(&transaction_data).unwrap());
@@ -117,19 +116,20 @@ impl TxnSenderImpl {
                         transaction_data.retry_count += 1;
                     }
                 }
-                for wire_transaction in wire_transactions.iter() {
+                for (send_port, wire_transaction) in wire_transactions.iter() {
                     for (leader_num, leader) in leader_tracker.get_leaders().iter().enumerate() {
                         let connection_cache = connection_cache.clone();
                         let sent_at = Instant::now();
                         let leader = Arc::new(leader.clone());
-                        let mut p3_addr = leader.gossip.unwrap();
-                        p3_addr.set_port(p3_port);
+                        let mut socket_addr = leader.gossip.unwrap();
+                        info!("p3 port is: {}", send_port);
+                        socket_addr.set_port(*send_port);
                         let wire_transaction = wire_transaction.clone();
                         txn_sender_runtime.spawn(async move {
                         // retry unless its a timeout
                         for i in 0..SEND_TXN_RETRIES {
                             let conn = connection_cache
-                                .get_nonblocking_connection(&p3_addr);
+                                .get_nonblocking_connection(&socket_addr);
                             if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA_BATCH, conn.send_data(&wire_transaction)).await {
                                 if let Err(e) = result {
                                     if i == SEND_TXN_RETRIES-1 {
@@ -176,11 +176,7 @@ impl TxnSenderImpl {
         self.transaction_store
             .add_transaction(transaction_data.clone());
         let solana_rpc = self.solana_rpc.clone();
-        let api_key = transaction_data
-            .request_metadata
-            .clone()
-            .map(|m| m.api_key.clone())
-            .unwrap_or("none".to_string());
+        let RequestMetadata { api_key, .. } = transaction_data.request_metadata.clone();
         self.txn_sender_runtime.spawn(async move {
             let confirmed_at = solana_rpc.confirm_transaction(signature.clone()).await;
 
@@ -201,10 +197,7 @@ impl TxnSenderImpl {
 impl TxnSender for TxnSenderImpl {
     fn send_transaction(&self, transaction_data: TransactionData) {
         self.track_transaction(&transaction_data);
-        let api_key = transaction_data
-            .request_metadata
-            .map(|m| m.api_key)
-            .unwrap_or("none".to_string());
+        let RequestMetadata { api_key, send_port } = transaction_data.request_metadata.clone();
         let mut leader_num = 0;
         for leader in self.leader_tracker.get_leaders() {
             if leader.gossip.is_none() {
@@ -214,14 +207,16 @@ impl TxnSender for TxnSenderImpl {
             let connection_cache = self.connection_cache.clone();
             let wire_transaction = transaction_data.wire_transaction.clone();
             let api_key = api_key.clone();
-            let p3_port = self.p3_port;
             self.txn_sender_runtime.spawn(async move {
-                let mut p3_addr = leader.gossip.unwrap();
-                p3_addr.set_port(p3_port);
+                let mut socket_addr = leader.gossip.unwrap();
+                socket_addr.set_port(send_port);
 
                 for i in 0..SEND_TXN_RETRIES {
                     let conn =
-                        connection_cache.get_nonblocking_connection(&p3_addr);
+                        connection_cache.get_nonblocking_connection(&socket_addr);
+                        let e = conn.server_addr();
+                        error!("___{:?}", e);
+
                     if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data(&wire_transaction)).await {
                             if let Err(e) = result {
                                 if i == SEND_TXN_RETRIES-1 {
@@ -236,6 +231,7 @@ impl TxnSender for TxnSenderImpl {
                                 }
                         } else {
                             let leader_num_str = leader_num.to_string();
+                            info!("Data sent!");
                             statsd_time!(
                                 "transaction_received_by_leader",
                                 transaction_data.sent_at.elapsed(), "leader_num" => &leader_num_str, "api_key" => &api_key, "retry" => "false");

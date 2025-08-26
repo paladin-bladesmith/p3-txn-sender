@@ -6,7 +6,7 @@ use jsonrpsee::{
     proc_macros::rpc,
     types::ErrorObjectOwned,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use solana_rpc_client_api::config::RpcSendTransactionConfig;
 use solana_sdk::transaction::VersionedTransaction;
 use solana_transaction_status::UiTransactionEncoding;
@@ -18,12 +18,82 @@ use crate::{
     vendor::solana_rpc::decode_and_deserialize,
 };
 
+#[repr(u16)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
+#[serde(into = "u16", from = "u16")]
+pub enum SendPorts {
+    P3 = 4819,
+    Mev = 4820,
+
+    // Standalone ports to avoid conflicts
+    P3S = 4821,
+    MevS = 4822,
+
+    // Standalone secondary ports to avoid conflicts
+    P3S2 = 4823,
+    MevS2 = 4824,
+
+    // Standalone secondary ports to avoid conflicts
+    P3S3 = 4825,
+    MevS3 = 4826,
+}
+
+impl From<SendPorts> for u16 {
+    fn from(port: SendPorts) -> u16 {
+        port as u16
+    }
+}
+
+impl From<u16> for SendPorts {
+    fn from(value: u16) -> Self {
+        match value {
+            4819 => SendPorts::P3,
+            4820 => SendPorts::Mev,
+            4821 => SendPorts::P3S,
+            4822 => SendPorts::MevS,
+            4823 => SendPorts::P3S2,
+            4824 => SendPorts::MevS2,
+            4825 => SendPorts::P3S3,
+            4826 => SendPorts::MevS3,
+            _ => panic!("Invalid port value: {}", value),
+        }
+    }
+}
+
+// jsonrpsee does not make it easy to access http data,
+// so creating this optional param to pass in metadata
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
+pub struct OptionalRequestMetadata {
+    pub api_key: Option<String>,
+    pub send_port: Option<SendPorts>,
+}
+
+impl OptionalRequestMetadata {
+    pub fn unwrap_or_default(self) -> RequestMetadata {
+        let api_key = self.api_key.unwrap_or("none".to_string());
+        let send_port = self.send_port.unwrap_or(SendPorts::P3) as u16;
+
+        RequestMetadata { api_key, send_port }
+    }
+}
+
 // jsonrpsee does not make it easy to access http data,
 // so creating this optional param to pass in metadata
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 pub struct RequestMetadata {
     pub api_key: String,
+    pub send_port: u16,
+}
+
+impl Default for RequestMetadata {
+    fn default() -> Self {
+        Self {
+            api_key: "none".to_string(),
+            send_port: SendPorts::P3 as u16,
+        }
+    }
 }
 
 #[rpc(server)]
@@ -35,7 +105,7 @@ pub trait AtlasTxnSender {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
-        request_metadata: Option<RequestMetadata>,
+        request_metadata: Option<OptionalRequestMetadata>,
     ) -> RpcResult<String>;
 }
 
@@ -68,13 +138,13 @@ impl AtlasTxnSenderServer for AtlasTxnSenderImpl {
         &self,
         txn: String,
         params: RpcSendTransactionConfig,
-        request_metadata: Option<RequestMetadata>,
+        request_metadata: Option<OptionalRequestMetadata>,
     ) -> RpcResult<String> {
         let sent_at = Instant::now();
-        let api_key = request_metadata
-            .clone()
-            .map(|m| m.api_key)
-            .unwrap_or("none".to_string());
+        let request_metadata = request_metadata
+            .map(|m| m.unwrap_or_default())
+            .unwrap_or_default();
+        let RequestMetadata { api_key, .. } = request_metadata.clone();
         statsd_count!("send_transaction", 1, "api_key" => &api_key);
         validate_send_transaction_params(&params)?;
         let start = Instant::now();
