@@ -1,4 +1,6 @@
-use solana_sdk::{signer::Signer, system_instruction, system_transaction};
+use futures::TryFutureExt;
+use solana_sdk::{pubkey::Pubkey, signer::Signer};
+use solana_system_interface::instruction;
 
 use crate::suite::{
     test_suite::TESTER4_PUBKEY, SuitePorts, TestSuite, TESTER1_PUBKEY, TESTER2_PUBKEY,
@@ -10,12 +12,6 @@ mod suite;
 // Simple tests where we send 1 TX to a port and make sure it works
 // Can be run using `cargo test --test simple -- --nocapture --exact simple_p3`
 
-#[tokio::test]
-async fn setup() {
-    // Generate our test suite
-    TestSuite::new_local(SuitePorts::default()).await;
-}
-
 /// Send simple transfer TX to regular p3 port
 #[tokio::test]
 async fn simple_p3() {
@@ -24,7 +20,7 @@ async fn simple_p3() {
 
     // Simple transfer TX
     let transfer_amount = 1000;
-    let tx = system_transaction::transfer(
+    let tx = solana_system_transaction::transfer(
         &suite.testers[0],
         &TESTER1_PUBKEY,
         transfer_amount,
@@ -56,8 +52,7 @@ async fn simple_mev() {
 
     // Simple transfer TX
     let transfer_amount = 1000;
-    let ix =
-        system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER2_PUBKEY, transfer_amount);
+    let ix = instruction::transfer(&suite.testers[1].pubkey(), &TESTER2_PUBKEY, transfer_amount);
 
     let tip_amount = 100_000;
     let tx = suite
@@ -96,7 +91,7 @@ async fn simple_with_cu() {
     // Simple transfer IX
     let transfer_amount = 1000;
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER3_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[2].pubkey(), &TESTER3_PUBKEY, transfer_amount);
 
     // Build TX with updated CU price
     let cu_price = 100_000;
@@ -131,7 +126,7 @@ async fn simple_standalone() {
 
     // Simple transfer TX
     let transfer_amount = 1000;
-    let tx = system_transaction::transfer(
+    let tx = solana_system_transaction::transfer(
         &suite.testers[3],
         &TESTER4_PUBKEY,
         transfer_amount,
@@ -150,4 +145,18 @@ async fn simple_standalone() {
 
     // Assert balances are correct
     assert_eq!(before_balance_tester1 - result.fee, balance_tester1);
+}
+
+/// Confirm the Standalone BE is working
+#[tokio::test]
+async fn simple_air_drop() {
+    let rpc_client = solana_client::nonblocking::rpc_client::RpcClient::new(format!(
+        "{}:{}",
+        "65.20.77.7", "8899"
+    ));
+
+    rpc_client.request_airdrop(
+        &Pubkey::from_str_const("7gt41ih9Q3CBB6gUwj2xQFBEd72MNSFMBFv8rHhrYr9E"),
+        1_000_000,
+    ).await.unwrap();
 }

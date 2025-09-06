@@ -4,7 +4,8 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use bincode::Options;
 use jsonrpsee::core::RpcResult;
-use solana_sdk::{bs58, packet::PACKET_DATA_SIZE};
+use solana_packet::PACKET_DATA_SIZE;
+use solana_sdk::bs58;
 use solana_transaction_status::TransactionBinaryEncoding;
 
 use crate::errors::invalid_request;

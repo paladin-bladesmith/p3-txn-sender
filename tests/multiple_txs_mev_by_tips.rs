@@ -1,4 +1,5 @@
-use solana_sdk::{signer::Signer, system_instruction};
+use solana_sdk::{signer::Signer};
+use solana_system_interface::instruction;
 use tokio::join;
 
 use crate::suite::{SuitePorts, TestSuite, TESTER1_PUBKEY, TESTER2_PUBKEY, TESTER3_PUBKEY};
@@ -22,7 +23,7 @@ async fn test_multiple_txs() {
 
     // Simple tranfer without tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER2_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[0].pubkey(), &TESTER2_PUBKEY, transfer_amount);
     let tx1 = suite
         .build_tx(
             vec![transfer_ix],
@@ -33,7 +34,7 @@ async fn test_multiple_txs() {
 
     // transfer with 100k tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER3_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[1].pubkey(), &TESTER3_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
     let tip_amount2 = 100_000;
@@ -49,7 +50,7 @@ async fn test_multiple_txs() {
 
     // transfer with 300k tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
     let tip_amount3 = 300_000;

@@ -1,3 +1,4 @@
+export PORT=4040
 export RPC_URL=http://localhost:8899
 export GRPC_URL=http://localhost:10000
 export STATIC_IP=127.0.0.1

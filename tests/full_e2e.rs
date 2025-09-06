@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use solana_sdk::{signer::Signer, system_instruction};
+use solana_sdk::{signer::Signer};
+use solana_system_interface::instruction;
 use tokio::{join, time::sleep};
 
 use crate::suite::{
@@ -34,11 +35,15 @@ async fn test_multiple_txs() {
         .await
         .with_tips()
         .await;
+    let suite4 = TestSuite::new_local(SuitePorts::standalone3())
+        .await
+        .with_tips()
+        .await;
     let transfer_amount = 1000;
 
     // transfer with no cu or tip
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[0].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX
     let tx1 = suite
@@ -51,7 +56,7 @@ async fn test_multiple_txs() {
 
     // transfer with 100k tips
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[1].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
     let tip_amount1 = 100_000;
@@ -67,7 +72,7 @@ async fn test_multiple_txs() {
 
     // transfer with 300k CU
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX
     let cu_price1 = 300_000;
@@ -82,7 +87,7 @@ async fn test_multiple_txs() {
 
     let tip_amount2 = 600_000;
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[3].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[3].pubkey(), &TESTER1_PUBKEY, transfer_amount);
     let tx4 = suite
         .build_tx_with_tip(
             vec![transfer_ix],
@@ -95,7 +100,7 @@ async fn test_multiple_txs() {
 
     // transfer with 1m CU
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[4].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[4].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX
     let cu_price2 = 1_000_000;
@@ -166,7 +171,7 @@ async fn test_multiple_txs() {
     );
 
     // Expected order of results
-    let expected = vec![vec![sig4], vec![sig2], vec![sig5], vec![sig3], vec![sig1]];
+    let expected = vec![vec![sig4], vec![sig2], vec![sig3], vec![sig5], vec![sig1]];
 
     // Assert order is as expected
     suite.assert_txs_order(result1.slot, expected).await;

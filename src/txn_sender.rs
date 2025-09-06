@@ -122,14 +122,15 @@ impl TxnSenderImpl {
                         let sent_at = Instant::now();
                         let leader = Arc::new(leader.clone());
                         let mut socket_addr = leader.gossip.unwrap();
-                        info!("p3 port is: {}", send_port);
                         socket_addr.set_port(*send_port);
+
                         let wire_transaction = wire_transaction.clone();
                         txn_sender_runtime.spawn(async move {
                         // retry unless its a timeout
                         for i in 0..SEND_TXN_RETRIES {
                             let conn = connection_cache
                                 .get_nonblocking_connection(&socket_addr);
+                            // println!("connnection server PAL: {:#?}", conn.);
                             if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA_BATCH, conn.send_data(&wire_transaction)).await {
                                 if let Err(e) = result {
                                     if i == SEND_TXN_RETRIES-1 {
@@ -214,8 +215,6 @@ impl TxnSender for TxnSenderImpl {
                 for i in 0..SEND_TXN_RETRIES {
                     let conn =
                         connection_cache.get_nonblocking_connection(&socket_addr);
-                        let e = conn.server_addr();
-                        error!("___{:?}", e);
 
                     if let Ok(result) = timeout(MAX_TIMEOUT_SEND_DATA, conn.send_data(&wire_transaction)).await {
                             if let Err(e) = result {

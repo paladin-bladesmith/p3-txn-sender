@@ -2,17 +2,17 @@ use std::{str::FromStr, time::Duration};
 
 use reqwest::Client;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::{
-    compute_budget,
     instruction::Instruction,
     message::Message,
     pubkey,
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
-    system_instruction,
     transaction::Transaction,
 };
+use solana_system_interface::instruction;
 use solana_transaction_status::{EncodedTransaction, UiTransactionEncoding};
 use tokio::{join, time::sleep};
 
@@ -260,7 +260,7 @@ impl TestSuite {
         payer: Option<&Pubkey>,
         cu_price: u64,
     ) -> Transaction {
-        let cu_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+        let cu_ix = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
         ixs.insert(0, cu_ix);
 
         let message = Message::new(&ixs, payer);
@@ -275,7 +275,7 @@ impl TestSuite {
         tip_amount: u64,
         tip_id: usize,
     ) -> Transaction {
-        let tip_ix = system_instruction::transfer(
+        let tip_ix = instruction::transfer(
             &from[0].pubkey(),
             &JITO_TIP_ACCOUNTS_ARR[tip_id],
             tip_amount,
@@ -295,10 +295,10 @@ impl TestSuite {
         tip_amount: u64,
         tip_id: usize,
     ) -> Transaction {
-        let cu_ix = compute_budget::ComputeBudgetInstruction::set_compute_unit_price(cu_price);
+        let cu_ix = ComputeBudgetInstruction::set_compute_unit_price(cu_price);
         ixs.insert(0, cu_ix);
 
-        let tip_ix = system_instruction::transfer(
+        let tip_ix = instruction::transfer(
             &from[0].pubkey(),
             &JITO_TIP_ACCOUNTS_ARR[tip_id],
             tip_amount,

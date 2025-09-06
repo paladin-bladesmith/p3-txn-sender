@@ -1,4 +1,5 @@
-use solana_sdk::{signer::Signer, system_instruction};
+use solana_sdk::signer::Signer;
+use solana_system_interface::instruction;
 use tokio::join;
 
 use crate::suite::{
@@ -22,7 +23,7 @@ async fn test_multiple_txs() {
 
     // Simple tranfer without CU
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[0].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[0].pubkey(), &TESTER1_PUBKEY, transfer_amount);
     let tx1 = suite
         .build_tx(
             vec![transfer_ix],
@@ -33,7 +34,7 @@ async fn test_multiple_txs() {
 
     // transfer with 100k CU price
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[1].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[1].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX with updated CU price
     let tx2 = suite
@@ -47,7 +48,7 @@ async fn test_multiple_txs() {
 
     // transfer with 300k CU price
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX with updated CU price
     let tx3 = suite
@@ -61,7 +62,7 @@ async fn test_multiple_txs() {
 
     // transfer with 300k CU price
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[3].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[3].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX with updated CU price
     let tx4 = suite
@@ -75,7 +76,7 @@ async fn test_multiple_txs() {
 
     // transfer with 300k CU price
     let transfer_ix =
-        system_instruction::transfer(&suite.testers[4].pubkey(), &TESTER1_PUBKEY, transfer_amount);
+        instruction::transfer(&suite.testers[4].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX with updated CU price
     let tx5 = suite
@@ -122,11 +123,26 @@ async fn test_multiple_txs() {
     let balance_tester5 = suite.get_balance(&TESTER5_PUBKEY).await;
 
     // Assert balances are correct
-    assert_eq!(before_balance_tester1 - result1.fee + transfer_amount * 4, balance_tester1);
-    assert_eq!(before_balance_tester2 - result2.fee - transfer_amount, balance_tester2);
-    assert_eq!(before_balance_tester3 - result3.fee - transfer_amount, balance_tester3);
-    assert_eq!(before_balance_tester4 - result4.fee - transfer_amount, balance_tester4);
-    assert_eq!(before_balance_tester5 - result5.fee - transfer_amount, balance_tester5);
+    assert_eq!(
+        before_balance_tester1 - result1.fee + transfer_amount * 4,
+        balance_tester1
+    );
+    assert_eq!(
+        before_balance_tester2 - result2.fee - transfer_amount,
+        balance_tester2
+    );
+    assert_eq!(
+        before_balance_tester3 - result3.fee - transfer_amount,
+        balance_tester3
+    );
+    assert_eq!(
+        before_balance_tester4 - result4.fee - transfer_amount,
+        balance_tester4
+    );
+    assert_eq!(
+        before_balance_tester5 - result5.fee - transfer_amount,
+        balance_tester5
+    );
 
     // Expected order of results
     let expected = vec![vec![sig5], vec![sig4], vec![sig3], vec![sig2], vec![sig1]];
