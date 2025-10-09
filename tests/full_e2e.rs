@@ -35,11 +35,9 @@ async fn test_multiple_txs() {
         .await
         .with_tips()
         .await;
-    let suite4 = TestSuite::new_local(SuitePorts::standalone3())
-        .await
-        .with_tips()
-        .await;
     let transfer_amount = 1000;
+
+    let validator_bal = suite.rpc_client.get_balance(&suite.validator_keypair.pubkey()).await.unwrap();
 
     // transfer with no cu or tip
     let transfer_ix =
@@ -175,4 +173,13 @@ async fn test_multiple_txs() {
 
     // Assert order is as expected
     suite.assert_txs_order(result1.slot, expected).await;
+
+    let val_bal_after = suite.rpc_client.get_balance(&suite.validator_keypair.pubkey()).await.unwrap();
+
+    let total_fees = result1.fee + result2.fee + result3.fee + result4.fee + result5.fee;
+    let total_tips = tip_amount1 + tip_amount2;
+
+    println!("Val prev bal: {validator_bal} | new bal: {val_bal_after}");
+    println!("Bal change: {}", val_bal_after as i64 - validator_bal as i64);
+    println!("Tips: {total_tips} | fees: {total_fees} | Total: {}", total_fees + total_tips);
 }

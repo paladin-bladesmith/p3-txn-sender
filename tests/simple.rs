@@ -1,5 +1,4 @@
-use futures::TryFutureExt;
-use solana_sdk::{pubkey::Pubkey, signer::Signer};
+use solana_sdk::{signer::Signer};
 use solana_system_interface::instruction;
 
 use crate::suite::{
@@ -147,16 +146,3 @@ async fn simple_standalone() {
     assert_eq!(before_balance_tester1 - result.fee, balance_tester1);
 }
 
-/// Confirm the Standalone BE is working
-#[tokio::test]
-async fn simple_air_drop() {
-    let rpc_client = solana_client::nonblocking::rpc_client::RpcClient::new(format!(
-        "{}:{}",
-        "65.20.77.7", "8899"
-    ));
-
-    rpc_client.request_airdrop(
-        &Pubkey::from_str_const("7gt41ih9Q3CBB6gUwj2xQFBEd72MNSFMBFv8rHhrYr9E"),
-        1_000_000,
-    ).await.unwrap();
-}
