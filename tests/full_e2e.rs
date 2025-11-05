@@ -73,7 +73,7 @@ async fn test_multiple_txs() {
         instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX
-    let cu_price1 = 300_000;
+    let cu_price1 = 3_000_000;
     let tx3 = suite
         .build_tx_with_cu_price(
             vec![transfer_ix],
@@ -101,7 +101,7 @@ async fn test_multiple_txs() {
         instruction::transfer(&suite.testers[4].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX
-    let cu_price2 = 1_000_000;
+    let cu_price2 = 150_000_000;
     let tx5 = suite
         .build_tx_with_cu_price(
             vec![transfer_ix],
@@ -169,17 +169,19 @@ async fn test_multiple_txs() {
     );
 
     // Expected order of results
-    let expected = vec![vec![sig4], vec![sig2], vec![sig3], vec![sig5], vec![sig1]];
+    let expected = vec![vec![sig5], vec![sig4], vec![sig2], vec![sig3], vec![sig1]];
 
     // Assert order is as expected
     suite.assert_txs_order(result1.slot, expected).await;
 
-    let val_bal_after = suite.rpc_client.get_balance(&suite.validator_keypair.pubkey()).await.unwrap();
+    
 
-    let total_fees = result1.fee + result2.fee + result3.fee + result4.fee + result5.fee;
-    let total_tips = tip_amount1 + tip_amount2;
+    // let val_bal_after = suite.rpc_client.get_balance(&suite.validator_keypair.pubkey()).await.unwrap();
 
-    println!("Val prev bal: {validator_bal} | new bal: {val_bal_after}");
-    println!("Bal change: {}", val_bal_after as i64 - validator_bal as i64);
-    println!("Tips: {total_tips} | fees: {total_fees} | Total: {}", total_fees + total_tips);
+    // let total_fees = result1.fee + result2.fee + result3.fee + result4.fee + result5.fee;
+    // let total_tips = tip_amount1 + tip_amount2;
+
+    // println!("Val prev bal: {validator_bal} | new bal: {val_bal_after}");
+    // println!("Bal change: {}", val_bal_after as i64 - validator_bal as i64);
+    // println!("Tips: {total_tips} | fees: {total_fees} | Total: {}", total_fees + total_tips);
 }

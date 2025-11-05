@@ -37,7 +37,7 @@ async fn test_multiple_txs() {
         instruction::transfer(&suite.testers[1].pubkey(), &TESTER3_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
-    let tip_amount2 = 100_000;
+    let tip_amount2 = 1_000_000;
     let tx2 = suite
         .build_tx_with_tip(
             vec![transfer_ix],
@@ -53,7 +53,7 @@ async fn test_multiple_txs() {
         instruction::transfer(&suite.testers[2].pubkey(), &TESTER1_PUBKEY, transfer_amount);
 
     // Build TX with updated tips
-    let tip_amount3 = 300_000;
+    let tip_amount3 = 3_000_000;
     let tx3 = suite
         .build_tx_with_tip(
             vec![transfer_ix],

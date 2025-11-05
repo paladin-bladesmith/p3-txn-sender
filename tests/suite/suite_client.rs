@@ -25,7 +25,7 @@ impl SuiteClient {
             self.client_url.clone(),
             self.send_port,
             tx,
-            id,
+            id as u64,
         )
         .await
     }
@@ -40,7 +40,7 @@ impl SuiteClient {
                 self.client_url.clone(),
                 self.send_port.clone(),
                 tx.clone(),
-                (i as u8) + 1,
+                (i as u64) + 1,
             )));
         }
 
@@ -59,7 +59,7 @@ async fn send_transaction(
     client_url: String,
     port: u16,
     tx: Transaction,
-    id: u8,
+    id: u64,
 ) -> String {
     let serialized = base64::encode(bincode::serialize(&tx).unwrap());
 
